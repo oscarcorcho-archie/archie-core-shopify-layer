@@ -10,7 +10,11 @@ import (
 	"archie-core-shopify-layer/graph/model"
 	"archie-core-shopify-layer/graph/scalars"
 	"archie-core-shopify-layer/internal/application"
+	"archie-core-shopify-layer/internal/domain"
+	"archie-core-shopify-layer/internal/infrastructure/pubsub"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 )
@@ -37,15 +41,60 @@ func (r *mutationResolver) ConfigureShopify(ctx context.Context, input model.Con
 	}
 
 	return &model.ConfigureShopifyPayload{
-		ID:         config.ID,
-		APIKey:     config.APIKey,
-		WebhookURL: config.WebhookURL,
+		ID:          config.ID,
+		ProjectID:   config.ProjectID,
+		Environment: config.Environment,
+		APIKey:      config.APIKey,
+		WebhookURL:  config.WebhookURL,
+		CreatedAt:   scalars.Time(config.CreatedAt),
+		UpdatedAt:   scalars.Time(config.UpdatedAt),
 	}, nil
 }
 
 // ShopifyInstallApp is the resolver for the shopify_installApp field.
 func (r *mutationResolver) ShopifyInstallApp(ctx context.Context, input model.InstallAppInput) (*model.InstallAppPayload, error) {
-	authURL, err := r.shopifyService.GenerateAuthURL(ctx, input.Shop, input.Scopes)
+	// Extract project ID and environment from context
+	projectID := domain.GetProjectIDFromContext(ctx)
+	environment := domain.GetEnvironmentFromContext(ctx)
+	if projectID == "" {
+		projectID = "default-project" // Fallback
+	}
+	if environment == "" {
+		environment = domain.DefaultEnvironment
+	}
+
+	// Generate random state for CSRF protection
+	stateBytes := make([]byte, 16)
+	if _, err := rand.Read(stateBytes); err != nil {
+		return nil, fmt.Errorf("failed to generate state: %w", err)
+	}
+	state := hex.EncodeToString(stateBytes)
+
+	// Get return URL (default to frontend URL if not provided)
+	returnURL := input.ReturnURL
+	if returnURL == nil || *returnURL == "" {
+		// Default to common frontend URL (can be overridden via env var)
+		defaultReturnURL := "http://localhost:5173"
+		returnURL = &defaultReturnURL
+	}
+
+	// Create session with project ID, environment, and return URL
+	session := &domain.Session{
+		Shop:        input.Shop,
+		State:       state,
+		Scopes:      input.Scopes,
+		ProjectID:   projectID,
+		Environment: environment,
+		ReturnURL:   *returnURL,
+		ExpiresAt:   time.Now().Add(10 * time.Minute),
+	}
+
+	if err := r.sessionRepo.CreateSession(ctx, session); err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	// Generate auth URL with state
+	authURL, err := r.shopifyService.GenerateAuthURL(ctx, input.Shop, input.Scopes, state)
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +159,20 @@ func (r *mutationResolver) ShopifyConfigureCredentials(ctx context.Context, inpu
 
 // ShopifyDeleteCredentials is the resolver for the shopify_deleteCredentials field.
 func (r *mutationResolver) ShopifyDeleteCredentials(ctx context.Context, projectID string, environment string) (bool, error) {
-	// TODO: Implement delete functionality
-	return false, fmt.Errorf("delete credentials not yet implemented")
+	// Add projectID and environment to context if not already present
+	if projectID != "" {
+		ctx = domain.WithProjectID(ctx, projectID)
+	}
+	if environment != "" {
+		ctx = domain.WithEnvironment(ctx, environment)
+	}
+
+	err := r.credentialsService.DeleteConfig(ctx, projectID)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // ShopifyShop is the resolver for the shopify_shop field.
@@ -132,6 +193,27 @@ func (r *queryResolver) ShopifyShop(ctx context.Context, domain string) (*model.
 		CreatedAt: scalars.Time(shop.CreatedAt),
 		UpdatedAt: scalars.Time(shop.UpdatedAt),
 	}, nil
+}
+
+// ShopifyShops is the resolver for the shopify_shops field.
+func (r *queryResolver) ShopifyShops(ctx context.Context) ([]*model.Shop, error) {
+	shops, err := r.shopifyService.ListShops(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*model.Shop, len(shops))
+	for i, shop := range shops {
+		result[i] = &model.Shop{
+			ID:        shop.ID,
+			Domain:    shop.Domain,
+			Scopes:    shop.Scopes,
+			CreatedAt: scalars.Time(shop.CreatedAt),
+			UpdatedAt: scalars.Time(shop.UpdatedAt),
+		}
+	}
+
+	return result, nil
 }
 
 // ShopifyProducts is the resolver for the shopify_products field.
@@ -162,37 +244,223 @@ func (r *queryResolver) ShopifyProducts(ctx context.Context, domain string) ([]*
 
 // ShopifyProduct is the resolver for the shopify_product field.
 func (r *queryResolver) ShopifyProduct(ctx context.Context, domain string, productID string) (*model.Product, error) {
-	panic(fmt.Errorf("not implemented: ShopifyProduct - shopify_product"))
+	// Parse product ID
+	var pid int64
+	if _, err := fmt.Sscanf(productID, "%d", &pid); err != nil {
+		return nil, fmt.Errorf("invalid product ID format: %w", err)
+	}
+
+	product, err := r.shopifyService.GetProduct(ctx, domain, pid)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, product.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, product.UpdatedAt.String())
+
+	return &model.Product{
+		ID:          fmt.Sprintf("%d", product.Id),
+		Title:       product.Title,
+		Handle:      &product.Handle,
+		Vendor:      &product.Vendor,
+		ProductType: &product.ProductType,
+		CreatedAt:   scalars.Time(createdAt),
+		UpdatedAt:   scalars.Time(updatedAt),
+	}, nil
 }
 
 // ShopifyOrders is the resolver for the shopify_orders field.
 func (r *queryResolver) ShopifyOrders(ctx context.Context, domain string) ([]*model.Order, error) {
-	panic(fmt.Errorf("not implemented: ShopifyOrders - shopify_orders"))
+	orders, err := r.shopifyService.GetOrders(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*model.Order, len(orders))
+	for i, o := range orders {
+		createdAt, _ := time.Parse(time.RFC3339, o.CreatedAt.String())
+		updatedAt, _ := time.Parse(time.RFC3339, o.UpdatedAt.String())
+
+		// Convert types
+		totalPrice := ""
+		if o.TotalPrice != nil {
+			totalPrice = o.TotalPrice.String()
+		}
+		financialStatus := string(o.FinancialStatus)
+		fulfillmentStatus := string(o.FulfillmentStatus)
+
+		result[i] = &model.Order{
+			ID:                fmt.Sprintf("%d", o.Id),
+			OrderNumber:       int(o.OrderNumber),
+			Email:             &o.Email,
+			TotalPrice:        totalPrice,
+			FinancialStatus:   &financialStatus,
+			FulfillmentStatus: &fulfillmentStatus,
+			CreatedAt:         scalars.Time(createdAt),
+			UpdatedAt:         scalars.Time(updatedAt),
+		}
+	}
+
+	return result, nil
 }
 
 // ShopifyOrder is the resolver for the shopify_order field.
 func (r *queryResolver) ShopifyOrder(ctx context.Context, domain string, orderID string) (*model.Order, error) {
-	panic(fmt.Errorf("not implemented: ShopifyOrder - shopify_order"))
+	// Parse order ID
+	var oid int64
+	if _, err := fmt.Sscanf(orderID, "%d", &oid); err != nil {
+		return nil, fmt.Errorf("invalid order ID format: %w", err)
+	}
+
+	order, err := r.shopifyService.GetOrder(ctx, domain, oid)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, order.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, order.UpdatedAt.String())
+
+	// Convert types
+	totalPrice := ""
+	if order.TotalPrice != nil {
+		totalPrice = order.TotalPrice.String()
+	}
+	financialStatus := string(order.FinancialStatus)
+	fulfillmentStatus := string(order.FulfillmentStatus)
+
+	return &model.Order{
+		ID:                fmt.Sprintf("%d", order.Id),
+		OrderNumber:       int(order.OrderNumber),
+		Email:             &order.Email,
+		TotalPrice:        totalPrice,
+		FinancialStatus:   &financialStatus,
+		FulfillmentStatus: &fulfillmentStatus,
+		CreatedAt:         scalars.Time(createdAt),
+		UpdatedAt:         scalars.Time(updatedAt),
+	}, nil
 }
 
 // ShopifyCustomers is the resolver for the shopify_customers field.
 func (r *queryResolver) ShopifyCustomers(ctx context.Context, domain string) ([]*model.Customer, error) {
-	panic(fmt.Errorf("not implemented: ShopifyCustomers - shopify_customers"))
+	customers, err := r.shopifyService.GetCustomers(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*model.Customer, len(customers))
+	for i, c := range customers {
+		createdAt, _ := time.Parse(time.RFC3339, c.CreatedAt.String())
+		updatedAt, _ := time.Parse(time.RFC3339, c.UpdatedAt.String())
+
+		ordersCount := int(c.OrdersCount)
+		totalSpent := ""
+		if c.TotalSpent != nil {
+			totalSpent = c.TotalSpent.String()
+		}
+
+		result[i] = &model.Customer{
+			ID:          fmt.Sprintf("%d", c.Id),
+			Email:       &c.Email,
+			FirstName:   &c.FirstName,
+			LastName:    &c.LastName,
+			OrdersCount: &ordersCount,
+			TotalSpent:  &totalSpent,
+			CreatedAt:   scalars.Time(createdAt),
+			UpdatedAt:   scalars.Time(updatedAt),
+		}
+	}
+
+	return result, nil
 }
 
 // ShopifyCustomer is the resolver for the shopify_customer field.
 func (r *queryResolver) ShopifyCustomer(ctx context.Context, domain string, customerID string) (*model.Customer, error) {
-	panic(fmt.Errorf("not implemented: ShopifyCustomer - shopify_customer"))
+	// Parse customer ID
+	var cid int64
+	if _, err := fmt.Sscanf(customerID, "%d", &cid); err != nil {
+		return nil, fmt.Errorf("invalid customer ID format: %w", err)
+	}
+
+	customer, err := r.shopifyService.GetCustomer(ctx, domain, cid)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, customer.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, customer.UpdatedAt.String())
+
+	ordersCount := int(customer.OrdersCount)
+	totalSpent := ""
+	if customer.TotalSpent != nil {
+		totalSpent = customer.TotalSpent.String()
+	}
+
+	return &model.Customer{
+		ID:          fmt.Sprintf("%d", customer.Id),
+		Email:       &customer.Email,
+		FirstName:   &customer.FirstName,
+		LastName:    &customer.LastName,
+		OrdersCount: &ordersCount,
+		TotalSpent:  &totalSpent,
+		CreatedAt:   scalars.Time(createdAt),
+		UpdatedAt:   scalars.Time(updatedAt),
+	}, nil
 }
 
 // ShopifySearchCustomers is the resolver for the shopify_searchCustomers field.
 func (r *queryResolver) ShopifySearchCustomers(ctx context.Context, domain string, query string) ([]*model.Customer, error) {
-	panic(fmt.Errorf("not implemented: ShopifySearchCustomers - shopify_searchCustomers"))
+	customers, err := r.shopifyService.SearchCustomers(ctx, domain, query)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*model.Customer, len(customers))
+	for i, c := range customers {
+		createdAt, _ := time.Parse(time.RFC3339, c.CreatedAt.String())
+		updatedAt, _ := time.Parse(time.RFC3339, c.UpdatedAt.String())
+
+		ordersCount := int(c.OrdersCount)
+		totalSpent := ""
+		if c.TotalSpent != nil {
+			totalSpent = c.TotalSpent.String()
+		}
+
+		result[i] = &model.Customer{
+			ID:          fmt.Sprintf("%d", c.Id),
+			Email:       &c.Email,
+			FirstName:   &c.FirstName,
+			LastName:    &c.LastName,
+			OrdersCount: &ordersCount,
+			TotalSpent:  &totalSpent,
+			CreatedAt:   scalars.Time(createdAt),
+			UpdatedAt:   scalars.Time(updatedAt),
+		}
+	}
+
+	return result, nil
 }
 
 // ShopifyInventoryLevels is the resolver for the shopify_inventoryLevels field.
 func (r *queryResolver) ShopifyInventoryLevels(ctx context.Context, domain string) ([]*model.InventoryLevel, error) {
-	panic(fmt.Errorf("not implemented: ShopifyInventoryLevels - shopify_inventoryLevels"))
+	levels, err := r.shopifyService.GetInventoryLevels(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*model.InventoryLevel, len(levels))
+	for i, l := range levels {
+		updatedAt, _ := time.Parse(time.RFC3339, l.UpdatedAt.String())
+		available := int(l.Available)
+
+		result[i] = &model.InventoryLevel{
+			InventoryItemID: fmt.Sprintf("%d", l.InventoryItemId),
+			LocationID:      fmt.Sprintf("%d", l.LocationId),
+			Available:       &available,
+			UpdatedAt:       scalars.Time(updatedAt),
+		}
+	}
+
+	return result, nil
 }
 
 // ShopifyGetConfig is the resolver for the shopify_getConfig field.
@@ -244,11 +512,71 @@ func (r *queryResolver) ShopifyGetCredentials(ctx context.Context, projectID str
 	}, nil
 }
 
+// WebhookEvents is the resolver for the webhookEvents field.
+func (r *subscriptionResolver) WebhookEvents(ctx context.Context, filter *model.WebhookEventFilter) (<-chan *model.WebhookEventPayload, error) {
+	// Convert GraphQL filter to pubsub filter
+	var pubsubFilter *pubsub.WebhookEventFilter
+	if filter != nil {
+		shop := ""
+		if filter.Shop != nil {
+			shop = *filter.Shop
+		}
+		pubsubFilter = &pubsub.WebhookEventFilter{
+			Topics: filter.Topics,
+			Shop:   shop,
+		}
+	}
+
+	// Subscribe to webhook events
+	channel := r.webhookPubSub.Subscribe(ctx, pubsubFilter)
+
+	// Create output channel
+	output := make(chan *model.WebhookEventPayload)
+
+	// Goroutine to forward events from pubsub to GraphQL subscription
+	go func() {
+		defer close(output)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-channel.Events:
+				if !ok {
+					return
+				}
+
+				// Convert domain event to GraphQL model
+				payload := &model.WebhookEventPayload{
+					ID:        event.ID,
+					Topic:     event.Topic,
+					Shop:      event.Shop,
+					Verified:  event.Verified,
+					CreatedAt: scalars.Time(event.CreatedAt),
+					Payload:   string(event.Payload),
+				}
+
+				select {
+				case <-ctx.Done():
+					return
+				case output <- payload:
+				}
+			}
+		}
+	}()
+
+	return output, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+// Subscription returns generated.SubscriptionResolver implementation.
+func (r *Resolver) Subscription() generated.SubscriptionResolver { return &subscriptionResolver{r} }
+
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type subscriptionResolver struct{ *Resolver }

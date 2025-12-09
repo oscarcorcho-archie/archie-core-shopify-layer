@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git
@@ -15,6 +15,9 @@ RUN go mod download
 
 # Copy source code
 COPY . .
+
+# Copy docs directory for Swagger
+COPY docs/ ./docs/
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/api
@@ -33,6 +36,9 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/main .
+
+# Copy docs directory for Swagger
+COPY --from=builder /app/docs ./docs
 
 # Change ownership
 RUN chown -R appuser:appuser /app

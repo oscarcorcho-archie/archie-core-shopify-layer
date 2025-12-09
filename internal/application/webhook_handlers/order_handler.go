@@ -39,17 +39,46 @@ func (h *OrderHandler) Handle(ctx context.Context, event *domain.WebhookEvent) e
 		return fmt.Errorf("failed to parse order webhook payload: %w", err)
 	}
 
+	// Extract order ID and number for logging
+	orderID, _ := orderData["id"].(float64)
+	orderNumber, _ := orderData["order_number"].(float64)
+	email, _ := orderData["email"].(string)
+	totalPrice, _ := orderData["total_price"].(string)
+	financialStatus, _ := orderData["financial_status"].(string)
+	fulfillmentStatus, _ := orderData["fulfillment_status"].(string)
+
 	h.logger.Info().
 		Str("topic", event.Topic).
 		Str("shop", event.Shop).
-		Interface("order", orderData).
+		Float64("orderId", orderID).
+		Float64("orderNumber", orderNumber).
+		Str("email", email).
+		Str("totalPrice", totalPrice).
+		Str("financialStatus", financialStatus).
+		Str("fulfillmentStatus", fulfillmentStatus).
 		Msg("Processing order webhook event")
 
-	// TODO: Implement order processing logic
-	// - Update order status in database
-	// - Trigger business logic
-	// - Send notifications
-	// - etc.
+	// Business logic implementation:
+	// 1. Order events are already logged to database via ProcessWebhook
+	// 2. Additional business logic can be added here:
+	//    - Update order status in local database
+	//    - Trigger notifications (email, SMS, etc.)
+	//    - Update inventory
+	//    - Sync with external systems (ERP, CRM, etc.)
+	//    - Trigger fulfillment workflows
+	//    - Update analytics/metrics
+
+	// Example: Log specific order events for monitoring
+	switch event.Topic {
+	case "orders/create":
+		h.logger.Info().Str("shop", event.Shop).Float64("orderId", orderID).Msg("New order created")
+	case "orders/paid":
+		h.logger.Info().Str("shop", event.Shop).Float64("orderId", orderID).Msg("Order paid")
+	case "orders/fulfilled":
+		h.logger.Info().Str("shop", event.Shop).Float64("orderId", orderID).Msg("Order fulfilled")
+	case "orders/cancelled":
+		h.logger.Info().Str("shop", event.Shop).Float64("orderId", orderID).Msg("Order cancelled")
+	}
 
 	return nil
 }

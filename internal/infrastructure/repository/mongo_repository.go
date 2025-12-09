@@ -67,6 +67,30 @@ func (r *MongoRepository) GetShop(ctx context.Context, shopDomain string) (*doma
 	return doc.ToDomain(), nil
 }
 
+// ListShops retrieves all shops
+func (r *MongoRepository) ListShops(ctx context.Context) ([]*domain.Shop, error) {
+	cursor, err := r.shopsCollection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list shops: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var shops []*domain.Shop
+	for cursor.Next(ctx) {
+		var doc entity.MongoShopDoc
+		if err := cursor.Decode(&doc); err != nil {
+			return nil, fmt.Errorf("failed to decode shop: %w", err)
+		}
+		shops = append(shops, doc.ToDomain())
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor error: %w", err)
+	}
+
+	return shops, nil
+}
+
 // LogWebhook logs a webhook event
 func (r *MongoRepository) LogWebhook(ctx context.Context, event *domain.WebhookEvent) error {
 	doc := entity.MongoWebhookDocFromDomain(event)

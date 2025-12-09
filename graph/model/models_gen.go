@@ -24,9 +24,13 @@ type ConfigureShopifyInput struct {
 }
 
 type ConfigureShopifyPayload struct {
-	ID         string `json:"id"`
-	APIKey     string `json:"apiKey"`
-	WebhookURL string `json:"webhookUrl"`
+	ID          string       `json:"id"`
+	ProjectID   string       `json:"projectId"`
+	Environment string       `json:"environment"`
+	APIKey      string       `json:"apiKey"`
+	WebhookURL  string       `json:"webhookUrl"`
+	CreatedAt   scalars.Time `json:"createdAt"`
+	UpdatedAt   scalars.Time `json:"updatedAt"`
 }
 
 type Customer struct {
@@ -51,8 +55,9 @@ type ExchangeTokenPayload struct {
 }
 
 type InstallAppInput struct {
-	Shop   string   `json:"shop"`
-	Scopes []string `json:"scopes"`
+	Shop      string   `json:"shop"`
+	Scopes    []string `json:"scopes"`
+	ReturnURL *string  `json:"returnUrl,omitempty"`
 }
 
 type InstallAppPayload struct {
@@ -120,10 +125,27 @@ type ShopifyCredentials struct {
 	UpdatedAt   scalars.Time `json:"updatedAt"`
 }
 
+type Subscription struct {
+}
+
 type WebhookEvent struct {
 	ID        string       `json:"id"`
 	Topic     string       `json:"topic"`
 	Shop      string       `json:"shop"`
 	Verified  bool         `json:"verified"`
+	CreatedAt scalars.Time `json:"createdAt"`
+}
+
+type WebhookEventFilter struct {
+	Topics []string `json:"topics,omitempty"`
+	Shop   *string  `json:"shop,omitempty"`
+}
+
+type WebhookEventPayload struct {
+	ID        string       `json:"id"`
+	Topic     string       `json:"topic"`
+	Shop      string       `json:"shop"`
+	Verified  bool         `json:"verified"`
+	Payload   string       `json:"payload"`
 	CreatedAt scalars.Time `json:"createdAt"`
 }

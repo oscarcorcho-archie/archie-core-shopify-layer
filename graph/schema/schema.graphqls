@@ -75,6 +75,7 @@ type ShopifyCredentials {
 input InstallAppInput {
   shop: String!
   scopes: [String!]!
+  returnUrl: String
 }
 
 # Payload returned after generating auth URL
@@ -115,8 +116,12 @@ input ConfigureShopifyInput {
 # Payload returned after configuring Shopify
 type ConfigureShopifyPayload {
   id: ID!
+  projectId: String!
+  environment: String!
   apiKey: String!
   webhookUrl: String!
+  createdAt: Time!
+  updatedAt: Time!
 }
 
 # Input for configuring credentials (deprecated - use ConfigureShopifyInput)
@@ -135,6 +140,7 @@ type ConfigureCredentialsPayload {
 type Query {
   # Shop operations
   shopify_shop(domain: String!): Shop
+  shopify_shops: [Shop!]!
   
   # Product operations
   shopify_products(domain: String!): [Product!]!
@@ -170,4 +176,25 @@ type Mutation {
   # Credentials operations (deprecated - use configureShopify)
   shopify_configureCredentials(input: ConfigureCredentialsInput!): ConfigureCredentialsPayload!
   shopify_deleteCredentials(projectId: String!, environment: String!): Boolean!
+}
+
+# Webhook event filter for subscriptions
+input WebhookEventFilter {
+  topics: [String!]  # Filter by webhook topics
+  shop: String       # Filter by shop domain
+}
+
+# Extended WebhookEvent with payload for subscriptions
+type WebhookEventPayload {
+  id: ID!
+  topic: String!
+  shop: String!
+  verified: Boolean!
+  payload: String!  # JSON string of webhook payload
+  createdAt: Time!
+}
+
+type Subscription {
+  # Subscribe to webhook events in real-time
+  webhookEvents(filter: WebhookEventFilter): WebhookEventPayload!
 }

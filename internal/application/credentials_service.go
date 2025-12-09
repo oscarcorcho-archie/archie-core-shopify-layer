@@ -152,6 +152,38 @@ func (s *CredentialsService) SaveCredentials(ctx context.Context, projectID stri
 	}, nil
 }
 
+// DeleteConfig deletes the Shopify configuration for a project and environment
+func (s *CredentialsService) DeleteConfig(ctx context.Context, tenantID string) error {
+	// Extract projectID and environment from context (type-safe)
+	projectID := domain.GetProjectIDFromContext(ctx)
+	environment := domain.GetEnvironmentFromContext(ctx)
+
+	if projectID == "" {
+		projectID = tenantID // Fallback
+	}
+	if environment == "" {
+		environment = domain.DefaultEnvironment // Default
+	}
+
+	// Check if config exists
+	config, err := s.configRepo.GetByTenantID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if config == nil {
+		return fmt.Errorf("shopify not configured for project %s and environment %s", projectID, environment)
+	}
+
+	// Delete configuration
+	if err := s.configRepo.Delete(ctx, projectID); err != nil {
+		s.logger.Error().Err(err).Str("projectId", projectID).Str("environment", environment).Msg("Failed to delete Shopify configuration")
+		return fmt.Errorf("failed to delete Shopify configuration: %w", err)
+	}
+
+	s.logger.Info().Str("projectId", projectID).Str("environment", environment).Msg("Shopify configuration deleted successfully")
+	return nil
+}
+
 // GetCredentials retrieves credentials (deprecated - use GetConfig instead)
 func (s *CredentialsService) GetCredentials(ctx context.Context, projectID string, environment string) (*domain.ShopifyCredentials, error) {
 	config, err := s.GetConfig(ctx, projectID)

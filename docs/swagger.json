@@ -1,0 +1,450 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Archie Core Shopify Layer API",
+    "description": "A service layer that wraps Shopify API capabilities, allowing users to configure credentials and use Shopify APIs through this service instead of calling Shopify directly.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8081",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check endpoint",
+        "description": "Returns the health status of the API",
+        "operationId": "healthCheck",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/shopify": {
+      "get": {
+        "summary": "Initiate Shopify OAuth flow",
+        "description": "Initiates the OAuth flow for Shopify app installation. Redirects to Shopify authorization page.",
+        "operationId": "initiateOAuth",
+        "tags": ["OAuth"],
+        "parameters": [
+          {
+            "name": "shop",
+            "in": "query",
+            "required": true,
+            "description": "Shop domain (e.g., your-store.myshopify.com)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirects to Shopify authorization page"
+          },
+          "400": {
+            "description": "Bad request - shop parameter missing"
+          }
+        }
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "summary": "OAuth callback handler",
+        "description": "Handles the OAuth callback from Shopify after authorization",
+        "operationId": "oauthCallback",
+        "tags": ["OAuth"],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "description": "Authorization code from Shopify",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shop",
+            "in": "query",
+            "required": true,
+            "description": "Shop domain",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "description": "OAuth state parameter",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OAuth flow completed successfully"
+          },
+          "400": {
+            "description": "Bad request - invalid parameters"
+          }
+        }
+      }
+    },
+    "/webhooks/shopify/{projectId}/{environment}": {
+      "post": {
+        "summary": "Shopify webhook receiver",
+        "description": "Receives webhook events from Shopify. Verifies HMAC signature and dispatches to registered handlers.",
+        "operationId": "receiveWebhook",
+        "tags": ["Webhooks"],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "description": "Project identifier",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "required": true,
+            "description": "Environment name (e.g., master, staging)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shopify-Shop-Domain",
+            "in": "header",
+            "required": true,
+            "description": "Shop domain",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shopify-Topic",
+            "in": "header",
+            "required": true,
+            "description": "Webhook topic (e.g., orders/create, products/update)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shopify-Hmac-Sha256",
+            "in": "header",
+            "required": true,
+            "description": "HMAC signature for webhook verification",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook processed successfully"
+          },
+          "401": {
+            "description": "Unauthorized - invalid HMAC signature"
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        }
+      }
+    },
+    "/api/v1/shopify/{path}": {
+      "get": {
+        "summary": "REST API Proxy - GET request",
+        "description": "Proxies GET requests to Shopify Admin API. Supports all Shopify Admin API endpoints.",
+        "operationId": "proxyGet",
+        "tags": ["REST Proxy"],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "Shopify API resource path (e.g., products.json, orders.json)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shop",
+            "in": "query",
+            "required": true,
+            "description": "Shop domain",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "required": true,
+            "description": "Project identifier",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "header",
+            "required": false,
+            "description": "Environment name (defaults to 'master')",
+            "schema": {
+              "type": "string",
+              "default": "master"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success response from Shopify API"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "REST API Proxy - POST request",
+        "description": "Proxies POST requests to Shopify Admin API",
+        "operationId": "proxyPost",
+        "tags": ["REST Proxy"],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "Shopify API resource path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shop",
+            "in": "query",
+            "required": true,
+            "description": "Shop domain",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "required": true,
+            "description": "Project identifier",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success response from Shopify API"
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        }
+      },
+      "put": {
+        "summary": "REST API Proxy - PUT request",
+        "description": "Proxies PUT requests to Shopify Admin API",
+        "operationId": "proxyPut",
+        "tags": ["REST Proxy"],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "Shopify API resource path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shop",
+            "in": "query",
+            "required": true,
+            "description": "Shop domain",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "required": true,
+            "description": "Project identifier",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success response from Shopify API"
+          }
+        }
+      },
+      "delete": {
+        "summary": "REST API Proxy - DELETE request",
+        "description": "Proxies DELETE requests to Shopify Admin API",
+        "operationId": "proxyDelete",
+        "tags": ["REST Proxy"],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "description": "Shopify API resource path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "shop",
+            "in": "query",
+            "required": true,
+            "description": "Shop domain",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "required": true,
+            "description": "Project identifier",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success response from Shopify API"
+          }
+        }
+      }
+    },
+    "/query": {
+      "post": {
+        "summary": "GraphQL endpoint",
+        "description": "GraphQL API endpoint. Use GraphQL Playground at / for interactive exploration.",
+        "operationId": "graphqlQuery",
+        "tags": ["GraphQL"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "GraphQL query string"
+                  },
+                  "variables": {
+                    "type": "object",
+                    "description": "GraphQL variables"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "GraphQL response"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Health check endpoints"
+    },
+    {
+      "name": "OAuth",
+      "description": "Shopify OAuth authentication endpoints"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Webhook endpoints for receiving Shopify events"
+    },
+    {
+      "name": "REST Proxy",
+      "description": "REST API proxy endpoints that forward requests to Shopify Admin API. See [Shopify Admin API Reference](https://shopify.dev/docs/api/admin-rest) for available endpoints."
+    },
+    {
+      "name": "GraphQL",
+      "description": "GraphQL API endpoints. Use GraphQL Playground at / for interactive exploration."
+    }
+  ]
+}
+

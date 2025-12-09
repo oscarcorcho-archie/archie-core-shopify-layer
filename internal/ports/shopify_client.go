@@ -9,7 +9,7 @@ import (
 // ShopifyClient defines the interface for Shopify API operations
 type ShopifyClient interface {
 	// Authentication
-	GenerateAuthURL(shop string, scopes []string) (string, error)
+	GenerateAuthURL(shop string, scopes []string, redirectURI string, state string) (string, error)
 	ExchangeToken(ctx context.Context, shop string, code string) (string, error)
 
 	// Shop API

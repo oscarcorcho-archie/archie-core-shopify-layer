@@ -41,6 +41,7 @@ type Config struct {
 type ResolverRoot interface {
 	Mutation() MutationResolver
 	Query() QueryResolver
+	Subscription() SubscriptionResolver
 }
 
 type DirectiveRoot struct {
@@ -52,9 +53,13 @@ type ComplexityRoot struct {
 	}
 
 	ConfigureShopifyPayload struct {
-		APIKey     func(childComplexity int) int
-		ID         func(childComplexity int) int
-		WebhookURL func(childComplexity int) int
+		APIKey      func(childComplexity int) int
+		CreatedAt   func(childComplexity int) int
+		Environment func(childComplexity int) int
+		ID          func(childComplexity int) int
+		ProjectID   func(childComplexity int) int
+		UpdatedAt   func(childComplexity int) int
+		WebhookURL  func(childComplexity int) int
 	}
 
 	Customer struct {
@@ -125,6 +130,7 @@ type ComplexityRoot struct {
 		ShopifyProducts        func(childComplexity int, domain string) int
 		ShopifySearchCustomers func(childComplexity int, domain string, query string) int
 		ShopifyShop            func(childComplexity int, domain string) int
+		ShopifyShops           func(childComplexity int) int
 	}
 
 	Shop struct {
@@ -154,9 +160,22 @@ type ComplexityRoot struct {
 		UpdatedAt   func(childComplexity int) int
 	}
 
+	Subscription struct {
+		WebhookEvents func(childComplexity int, filter *model.WebhookEventFilter) int
+	}
+
 	WebhookEvent struct {
 		CreatedAt func(childComplexity int) int
 		ID        func(childComplexity int) int
+		Shop      func(childComplexity int) int
+		Topic     func(childComplexity int) int
+		Verified  func(childComplexity int) int
+	}
+
+	WebhookEventPayload struct {
+		CreatedAt func(childComplexity int) int
+		ID        func(childComplexity int) int
+		Payload   func(childComplexity int) int
 		Shop      func(childComplexity int) int
 		Topic     func(childComplexity int) int
 		Verified  func(childComplexity int) int
@@ -172,6 +191,7 @@ type MutationResolver interface {
 }
 type QueryResolver interface {
 	ShopifyShop(ctx context.Context, domain string) (*model.Shop, error)
+	ShopifyShops(ctx context.Context) ([]*model.Shop, error)
 	ShopifyProducts(ctx context.Context, domain string) ([]*model.Product, error)
 	ShopifyProduct(ctx context.Context, domain string, productID string) (*model.Product, error)
 	ShopifyOrders(ctx context.Context, domain string) ([]*model.Order, error)
@@ -182,6 +202,9 @@ type QueryResolver interface {
 	ShopifyInventoryLevels(ctx context.Context, domain string) ([]*model.InventoryLevel, error)
 	ShopifyGetConfig(ctx context.Context) (*model.ShopifyConfig, error)
 	ShopifyGetCredentials(ctx context.Context, projectID string, environment string) (*model.ShopifyCredentials, error)
+}
+type SubscriptionResolver interface {
+	WebhookEvents(ctx context.Context, filter *model.WebhookEventFilter) (<-chan *model.WebhookEventPayload, error)
 }
 
 type executableSchema struct {
@@ -216,12 +239,36 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.ConfigureShopifyPayload.APIKey(childComplexity), true
+	case "ConfigureShopifyPayload.createdAt":
+		if e.complexity.ConfigureShopifyPayload.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.ConfigureShopifyPayload.CreatedAt(childComplexity), true
+	case "ConfigureShopifyPayload.environment":
+		if e.complexity.ConfigureShopifyPayload.Environment == nil {
+			break
+		}
+
+		return e.complexity.ConfigureShopifyPayload.Environment(childComplexity), true
 	case "ConfigureShopifyPayload.id":
 		if e.complexity.ConfigureShopifyPayload.ID == nil {
 			break
 		}
 
 		return e.complexity.ConfigureShopifyPayload.ID(childComplexity), true
+	case "ConfigureShopifyPayload.projectId":
+		if e.complexity.ConfigureShopifyPayload.ProjectID == nil {
+			break
+		}
+
+		return e.complexity.ConfigureShopifyPayload.ProjectID(childComplexity), true
+	case "ConfigureShopifyPayload.updatedAt":
+		if e.complexity.ConfigureShopifyPayload.UpdatedAt == nil {
+			break
+		}
+
+		return e.complexity.ConfigureShopifyPayload.UpdatedAt(childComplexity), true
 	case "ConfigureShopifyPayload.webhookUrl":
 		if e.complexity.ConfigureShopifyPayload.WebhookURL == nil {
 			break
@@ -587,6 +634,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.ShopifyShop(childComplexity, args["domain"].(string)), true
+	case "Query.shopify_shops":
+		if e.complexity.Query.ShopifyShops == nil {
+			break
+		}
+
+		return e.complexity.Query.ShopifyShops(childComplexity), true
 
 	case "Shop.createdAt":
 		if e.complexity.Shop.CreatedAt == nil {
@@ -699,6 +752,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.ShopifyCredentials.UpdatedAt(childComplexity), true
 
+	case "Subscription.webhookEvents":
+		if e.complexity.Subscription.WebhookEvents == nil {
+			break
+		}
+
+		args, err := ec.field_Subscription_webhookEvents_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Subscription.WebhookEvents(childComplexity, args["filter"].(*model.WebhookEventFilter)), true
+
 	case "WebhookEvent.createdAt":
 		if e.complexity.WebhookEvent.CreatedAt == nil {
 			break
@@ -730,6 +795,43 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.WebhookEvent.Verified(childComplexity), true
 
+	case "WebhookEventPayload.createdAt":
+		if e.complexity.WebhookEventPayload.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.WebhookEventPayload.CreatedAt(childComplexity), true
+	case "WebhookEventPayload.id":
+		if e.complexity.WebhookEventPayload.ID == nil {
+			break
+		}
+
+		return e.complexity.WebhookEventPayload.ID(childComplexity), true
+	case "WebhookEventPayload.payload":
+		if e.complexity.WebhookEventPayload.Payload == nil {
+			break
+		}
+
+		return e.complexity.WebhookEventPayload.Payload(childComplexity), true
+	case "WebhookEventPayload.shop":
+		if e.complexity.WebhookEventPayload.Shop == nil {
+			break
+		}
+
+		return e.complexity.WebhookEventPayload.Shop(childComplexity), true
+	case "WebhookEventPayload.topic":
+		if e.complexity.WebhookEventPayload.Topic == nil {
+			break
+		}
+
+		return e.complexity.WebhookEventPayload.Topic(childComplexity), true
+	case "WebhookEventPayload.verified":
+		if e.complexity.WebhookEventPayload.Verified == nil {
+			break
+		}
+
+		return e.complexity.WebhookEventPayload.Verified(childComplexity), true
+
 	}
 	return 0, false
 }
@@ -742,6 +844,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputConfigureShopifyInput,
 		ec.unmarshalInputExchangeTokenInput,
 		ec.unmarshalInputInstallAppInput,
+		ec.unmarshalInputWebhookEventFilter,
 	)
 	first := true
 
@@ -785,6 +888,23 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			ctx = graphql.WithUnmarshalerMap(ctx, inputUnmarshalMap)
 			data := ec._Mutation(ctx, opCtx.Operation.SelectionSet)
 			var buf bytes.Buffer
+			data.MarshalGQL(&buf)
+
+			return &graphql.Response{
+				Data: buf.Bytes(),
+			}
+		}
+	case ast.Subscription:
+		next := ec._Subscription(ctx, opCtx.Operation.SelectionSet)
+
+		var buf bytes.Buffer
+		return func(ctx context.Context) *graphql.Response {
+			buf.Reset()
+			data := next(ctx)
+
+			if data == nil {
+				return nil
+			}
 			data.MarshalGQL(&buf)
 
 			return &graphql.Response{
@@ -916,6 +1036,7 @@ type ShopifyCredentials {
 input InstallAppInput {
   shop: String!
   scopes: [String!]!
+  returnUrl: String
 }
 
 # Payload returned after generating auth URL
@@ -956,8 +1077,12 @@ input ConfigureShopifyInput {
 # Payload returned after configuring Shopify
 type ConfigureShopifyPayload {
   id: ID!
+  projectId: String!
+  environment: String!
   apiKey: String!
   webhookUrl: String!
+  createdAt: Time!
+  updatedAt: Time!
 }
 
 # Input for configuring credentials (deprecated - use ConfigureShopifyInput)
@@ -976,6 +1101,7 @@ type ConfigureCredentialsPayload {
 type Query {
   # Shop operations
   shopify_shop(domain: String!): Shop
+  shopify_shops: [Shop!]!
   
   # Product operations
   shopify_products(domain: String!): [Product!]!
@@ -1011,6 +1137,27 @@ type Mutation {
   # Credentials operations (deprecated - use configureShopify)
   shopify_configureCredentials(input: ConfigureCredentialsInput!): ConfigureCredentialsPayload!
   shopify_deleteCredentials(projectId: String!, environment: String!): Boolean!
+}
+
+# Webhook event filter for subscriptions
+input WebhookEventFilter {
+  topics: [String!]  # Filter by webhook topics
+  shop: String       # Filter by shop domain
+}
+
+# Extended WebhookEvent with payload for subscriptions
+type WebhookEventPayload {
+  id: ID!
+  topic: String!
+  shop: String!
+  verified: Boolean!
+  payload: String!  # JSON string of webhook payload
+  createdAt: Time!
+}
+
+type Subscription {
+  # Subscribe to webhook events in real-time
+  webhookEvents(filter: WebhookEventFilter): WebhookEventPayload!
 }
 `, BuiltIn: false},
 }
@@ -1226,6 +1373,17 @@ func (ec *executionContext) field_Query_shopify_shop_args(ctx context.Context, r
 	return args, nil
 }
 
+func (ec *executionContext) field_Subscription_webhookEvents_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "filter", ec.unmarshalOWebhookEventFilter2ᚖarchieᚑcoreᚑshopifyᚑlayerᚋgraphᚋmodelᚐWebhookEventFilter)
+	if err != nil {
+		return nil, err
+	}
+	args["filter"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field___Directive_args_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1350,6 +1508,64 @@ func (ec *executionContext) fieldContext_ConfigureShopifyPayload_id(_ context.Co
 	return fc, nil
 }
 
+func (ec *executionContext) _ConfigureShopifyPayload_projectId(ctx context.Context, field graphql.CollectedField, obj *model.ConfigureShopifyPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ConfigureShopifyPayload_projectId,
+		func(ctx context.Context) (any, error) {
+			return obj.ProjectID, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ConfigureShopifyPayload_projectId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ConfigureShopifyPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ConfigureShopifyPayload_environment(ctx context.Context, field graphql.CollectedField, obj *model.ConfigureShopifyPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ConfigureShopifyPayload_environment,
+		func(ctx context.Context) (any, error) {
+			return obj.Environment, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ConfigureShopifyPayload_environment(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ConfigureShopifyPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _ConfigureShopifyPayload_apiKey(ctx context.Context, field graphql.CollectedField, obj *model.ConfigureShopifyPayload) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1403,6 +1619,64 @@ func (ec *executionContext) fieldContext_ConfigureShopifyPayload_webhookUrl(_ co
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ConfigureShopifyPayload_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.ConfigureShopifyPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ConfigureShopifyPayload_createdAt,
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		ec.marshalNTime2archieᚑcoreᚑshopifyᚑlayerᚋgraphᚋscalarsᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ConfigureShopifyPayload_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ConfigureShopifyPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ConfigureShopifyPayload_updatedAt(ctx context.Context, field graphql.CollectedField, obj *model.ConfigureShopifyPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ConfigureShopifyPayload_updatedAt,
+		func(ctx context.Context) (any, error) {
+			return obj.UpdatedAt, nil
+		},
+		nil,
+		ec.marshalNTime2archieᚑcoreᚑshopifyᚑlayerᚋgraphᚋscalarsᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ConfigureShopifyPayload_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ConfigureShopifyPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
 		},
 	}
 	return fc, nil
@@ -1882,10 +2156,18 @@ func (ec *executionContext) fieldContext_Mutation_configureShopify(ctx context.C
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_ConfigureShopifyPayload_id(ctx, field)
+			case "projectId":
+				return ec.fieldContext_ConfigureShopifyPayload_projectId(ctx, field)
+			case "environment":
+				return ec.fieldContext_ConfigureShopifyPayload_environment(ctx, field)
 			case "apiKey":
 				return ec.fieldContext_ConfigureShopifyPayload_apiKey(ctx, field)
 			case "webhookUrl":
 				return ec.fieldContext_ConfigureShopifyPayload_webhookUrl(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_ConfigureShopifyPayload_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_ConfigureShopifyPayload_updatedAt(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ConfigureShopifyPayload", field.Name)
 		},
@@ -2566,6 +2848,47 @@ func (ec *executionContext) fieldContext_Query_shopify_shop(ctx context.Context,
 	if fc.Args, err = ec.field_Query_shopify_shop_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_shopify_shops(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_shopify_shops,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().ShopifyShops(ctx)
+		},
+		nil,
+		ec.marshalNShop2ᚕᚖarchieᚑcoreᚑshopifyᚑlayerᚋgraphᚋmodelᚐShopᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_shopify_shops(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Shop_id(ctx, field)
+			case "domain":
+				return ec.fieldContext_Shop_domain(ctx, field)
+			case "scopes":
+				return ec.fieldContext_Shop_scopes(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Shop_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Shop_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Shop", field.Name)
+		},
 	}
 	return fc, nil
 }
@@ -3760,6 +4083,61 @@ func (ec *executionContext) fieldContext_ShopifyCredentials_updatedAt(_ context.
 	return fc, nil
 }
 
+func (ec *executionContext) _Subscription_webhookEvents(ctx context.Context, field graphql.CollectedField) (ret func(ctx context.Context) graphql.Marshaler) {
+	return graphql.ResolveFieldStream(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Subscription_webhookEvents,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Subscription().WebhookEvents(ctx, fc.Args["filter"].(*model.WebhookEventFilter))
+		},
+		nil,
+		ec.marshalNWebhookEventPayload2ᚖarchieᚑcoreᚑshopifyᚑlayerᚋgraphᚋmodelᚐWebhookEventPayload,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Subscription_webhookEvents(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Subscription",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_WebhookEventPayload_id(ctx, field)
+			case "topic":
+				return ec.fieldContext_WebhookEventPayload_topic(ctx, field)
+			case "shop":
+				return ec.fieldContext_WebhookEventPayload_shop(ctx, field)
+			case "verified":
+				return ec.fieldContext_WebhookEventPayload_verified(ctx, field)
+			case "payload":
+				return ec.fieldContext_WebhookEventPayload_payload(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_WebhookEventPayload_createdAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type WebhookEventPayload", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Subscription_webhookEvents_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _WebhookEvent_id(ctx context.Context, field graphql.CollectedField, obj *model.WebhookEvent) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3895,6 +4273,180 @@ func (ec *executionContext) _WebhookEvent_createdAt(ctx context.Context, field g
 func (ec *executionContext) fieldContext_WebhookEvent_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "WebhookEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WebhookEventPayload_id(ctx context.Context, field graphql.CollectedField, obj *model.WebhookEventPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WebhookEventPayload_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WebhookEventPayload_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WebhookEventPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WebhookEventPayload_topic(ctx context.Context, field graphql.CollectedField, obj *model.WebhookEventPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WebhookEventPayload_topic,
+		func(ctx context.Context) (any, error) {
+			return obj.Topic, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WebhookEventPayload_topic(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WebhookEventPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WebhookEventPayload_shop(ctx context.Context, field graphql.CollectedField, obj *model.WebhookEventPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WebhookEventPayload_shop,
+		func(ctx context.Context) (any, error) {
+			return obj.Shop, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WebhookEventPayload_shop(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WebhookEventPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WebhookEventPayload_verified(ctx context.Context, field graphql.CollectedField, obj *model.WebhookEventPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WebhookEventPayload_verified,
+		func(ctx context.Context) (any, error) {
+			return obj.Verified, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WebhookEventPayload_verified(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WebhookEventPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WebhookEventPayload_payload(ctx context.Context, field graphql.CollectedField, obj *model.WebhookEventPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WebhookEventPayload_payload,
+		func(ctx context.Context) (any, error) {
+			return obj.Payload, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WebhookEventPayload_payload(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WebhookEventPayload",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _WebhookEventPayload_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.WebhookEventPayload) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_WebhookEventPayload_createdAt,
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		ec.marshalNTime2archieᚑcoreᚑshopifyᚑlayerᚋgraphᚋscalarsᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_WebhookEventPayload_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "WebhookEventPayload",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
@@ -5481,7 +6033,7 @@ func (ec *executionContext) unmarshalInputInstallAppInput(ctx context.Context, o
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"shop", "scopes"}
+	fieldsInOrder := [...]string{"shop", "scopes", "returnUrl"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -5502,6 +6054,47 @@ func (ec *executionContext) unmarshalInputInstallAppInput(ctx context.Context, o
 				return it, err
 			}
 			it.Scopes = data
+		case "returnUrl":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("returnUrl"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ReturnURL = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputWebhookEventFilter(ctx context.Context, obj any) (model.WebhookEventFilter, error) {
+	var it model.WebhookEventFilter
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"topics", "shop"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "topics":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("topics"))
+			data, err := ec.unmarshalOString2ᚕstringᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Topics = data
+		case "shop":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("shop"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Shop = data
 		}
 	}
 
@@ -5571,6 +6164,16 @@ func (ec *executionContext) _ConfigureShopifyPayload(ctx context.Context, sel as
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "projectId":
+			out.Values[i] = ec._ConfigureShopifyPayload_projectId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "environment":
+			out.Values[i] = ec._ConfigureShopifyPayload_environment(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "apiKey":
 			out.Values[i] = ec._ConfigureShopifyPayload_apiKey(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -5578,6 +6181,16 @@ func (ec *executionContext) _ConfigureShopifyPayload(ctx context.Context, sel as
 			}
 		case "webhookUrl":
 			out.Values[i] = ec._ConfigureShopifyPayload_webhookUrl(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createdAt":
+			out.Values[i] = ec._ConfigureShopifyPayload_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updatedAt":
+			out.Values[i] = ec._ConfigureShopifyPayload_updatedAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -6037,6 +6650,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "shopify_shops":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_shopify_shops(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "shopify_products":
 			field := field
 
@@ -6465,6 +7100,26 @@ func (ec *executionContext) _ShopifyCredentials(ctx context.Context, sel ast.Sel
 	return out
 }
 
+var subscriptionImplementors = []string{"Subscription"}
+
+func (ec *executionContext) _Subscription(ctx context.Context, sel ast.SelectionSet) func(ctx context.Context) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, subscriptionImplementors)
+	ctx = graphql.WithFieldContext(ctx, &graphql.FieldContext{
+		Object: "Subscription",
+	})
+	if len(fields) != 1 {
+		graphql.AddErrorf(ctx, "must subscribe to exactly one stream")
+		return nil
+	}
+
+	switch fields[0].Name {
+	case "webhookEvents":
+		return ec._Subscription_webhookEvents(ctx, fields[0])
+	default:
+		panic("unknown field " + strconv.Quote(fields[0].Name))
+	}
+}
+
 var webhookEventImplementors = []string{"WebhookEvent"}
 
 func (ec *executionContext) _WebhookEvent(ctx context.Context, sel ast.SelectionSet, obj *model.WebhookEvent) graphql.Marshaler {
@@ -6498,6 +7153,70 @@ func (ec *executionContext) _WebhookEvent(ctx context.Context, sel ast.Selection
 			}
 		case "createdAt":
 			out.Values[i] = ec._WebhookEvent_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var webhookEventPayloadImplementors = []string{"WebhookEventPayload"}
+
+func (ec *executionContext) _WebhookEventPayload(ctx context.Context, sel ast.SelectionSet, obj *model.WebhookEventPayload) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, webhookEventPayloadImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("WebhookEventPayload")
+		case "id":
+			out.Values[i] = ec._WebhookEventPayload_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "topic":
+			out.Values[i] = ec._WebhookEventPayload_topic(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "shop":
+			out.Values[i] = ec._WebhookEventPayload_shop(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "verified":
+			out.Values[i] = ec._WebhookEventPayload_verified(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "payload":
+			out.Values[i] = ec._WebhookEventPayload_payload(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createdAt":
+			out.Values[i] = ec._WebhookEventPayload_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -7199,6 +7918,50 @@ func (ec *executionContext) marshalNProduct2ᚖarchieᚑcoreᚑshopifyᚑlayer�
 	return ec._Product(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNShop2ᚕᚖarchieᚑcoreᚑshopifyᚑlayerᚋgraphᚋmodelᚐShopᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Shop) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNShop2ᚖarchieᚑcoreᚑshopifyᚑlayerᚋgraphᚋmodelᚐShop(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) marshalNShop2ᚖarchieᚑcoreᚑshopifyᚑlayerᚋgraphᚋmodelᚐShop(ctx context.Context, sel ast.SelectionSet, v *model.Shop) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -7273,6 +8036,20 @@ func (ec *executionContext) unmarshalNTime2archieᚑcoreᚑshopifyᚑlayerᚋgra
 
 func (ec *executionContext) marshalNTime2archieᚑcoreᚑshopifyᚑlayerᚋgraphᚋscalarsᚐTime(ctx context.Context, sel ast.SelectionSet, v scalars.Time) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) marshalNWebhookEventPayload2archieᚑcoreᚑshopifyᚑlayerᚋgraphᚋmodelᚐWebhookEventPayload(ctx context.Context, sel ast.SelectionSet, v model.WebhookEventPayload) graphql.Marshaler {
+	return ec._WebhookEventPayload(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNWebhookEventPayload2ᚖarchieᚑcoreᚑshopifyᚑlayerᚋgraphᚋmodelᚐWebhookEventPayload(ctx context.Context, sel ast.SelectionSet, v *model.WebhookEventPayload) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._WebhookEventPayload(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalN__Directive2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐDirective(ctx context.Context, sel ast.SelectionSet, v introspection.Directive) graphql.Marshaler {
@@ -7618,6 +8395,42 @@ func (ec *executionContext) marshalOShopifyCredentials2ᚖarchieᚑcoreᚑshopif
 	return ec._ShopifyCredentials(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalOString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalOString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalOString2ᚖstring(ctx context.Context, v any) (*string, error) {
 	if v == nil {
 		return nil, nil
@@ -7634,6 +8447,14 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	_ = ctx
 	res := graphql.MarshalString(*v)
 	return res
+}
+
+func (ec *executionContext) unmarshalOWebhookEventFilter2ᚖarchieᚑcoreᚑshopifyᚑlayerᚋgraphᚋmodelᚐWebhookEventFilter(ctx context.Context, v any) (*model.WebhookEventFilter, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputWebhookEventFilter(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValueᚄ(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {

@@ -5,7 +5,7 @@ services:
     image: mongo:7
     container_name: shopify-mongodb
     ports:
-      - "27017:27017"
+      - "27018:27017"
     environment:
       MONGO_INITDB_DATABASE: shopify_dev
     volumes:
@@ -17,7 +17,7 @@ services:
     image: redis:7-alpine
     container_name: shopify-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -29,14 +29,15 @@ services:
       dockerfile: Dockerfile
     container_name: shopify-app
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
       - MONGODB_URI=mongodb://mongodb:27017
       - MONGODB_DATABASE=shopify_dev
       - REDIS_ADDR=redis:6379
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-51005aa56afd74dd721c478c99a75450}
       - SHOPIFY_API_KEY=${SHOPIFY_API_KEY}
       - SHOPIFY_API_SECRET=${SHOPIFY_API_SECRET}
-      - APP_URL=${APP_URL:-http://localhost:8080}
+      - APP_URL=http://localhost:8081
       - PORT=8080
     depends_on:
       - mongodb

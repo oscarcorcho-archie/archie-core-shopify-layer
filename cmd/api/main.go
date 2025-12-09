@@ -19,6 +19,7 @@ import (
 	"archie-core-shopify-layer/internal/domain"
 	apiinfra "archie-core-shopify-layer/internal/infrastructure/api"
 	"archie-core-shopify-layer/internal/infrastructure/encryption"
+	"archie-core-shopify-layer/internal/infrastructure/pubsub"
 	"archie-core-shopify-layer/internal/infrastructure/repository"
 	shopifyinfra "archie-core-shopify-layer/internal/infrastructure/shopify"
 
@@ -29,11 +30,17 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	securitymiddleware "archie-core-shopify-layer/internal/infrastructure/middleware"
 )
+
+// contextKey is a type for context keys to avoid collisions
+type contextKey string
+
+const oauthSessionKey contextKey = "oauth_session"
 
 func main() {
 	// Initialize logger
@@ -78,6 +85,7 @@ func main() {
 	repo := repository.NewMongoRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
 	configRepo := repository.NewMongoShopifyConfigRepository(db)
+	webhookSubscriptionRepo := repository.NewMongoWebhookSubscriptionRepository(db)
 
 	// Initialize rate limiter and retry config for Shopify API
 	rateLimiter := shopifyinfra.NewRateLimiter(logger)
@@ -114,10 +122,13 @@ func main() {
 	webhookDispatcher.RegisterHandler(webhook_handlers.NewOrderHandler(logger))
 	webhookDispatcher.RegisterHandler(webhook_handlers.NewProductHandler(logger))
 	webhookDispatcher.RegisterHandler(webhook_handlers.NewCustomerHandler(logger))
-	webhookDispatcher.RegisterHandler(webhook_handlers.NewAppUninstalledHandler(logger))
+	webhookDispatcher.RegisterHandler(webhook_handlers.NewAppUninstalledHandler(logger, repo, webhookSubscriptionRepo, shopifyService))
+
+	// Initialize webhook pub/sub for GraphQL subscriptions
+	webhookPubSub := pubsub.NewWebhookPubSub(logger)
 
 	// Create GraphQL resolver
-	resolver := graph.NewResolver(shopifyService, credentialsService)
+	resolver := graph.NewResolver(shopifyService, credentialsService, webhookPubSub, sessionRepo)
 
 	// Create GraphQL executable schema
 	execSchema := generated.NewExecutableSchema(generated.Config{
@@ -146,9 +157,25 @@ func main() {
 	}))
 
 	// Add tenant ID middleware (extracts project ID and environment from headers)
+	// This middleware will skip public routes like /health and /swagger/*
 	r.Use(tenantIDMiddleware)
 
-	// Routes
+	// Public routes (no tenant ID required)
+	// Health check - must be public for monitoring
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
+	// Swagger documentation - public
+	r.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"), // The URL pointing to API definition
+	))
+	r.Get("/swagger/doc.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		http.ServeFile(w, r, "./docs/swagger.json")
+	})
+
+	// Routes requiring tenant ID
 	r.Handle("/", playground.Handler("GraphQL playground", "/query"))
 	r.Handle("/query", srv)
 
@@ -157,18 +184,13 @@ func main() {
 	r.Get("/auth/callback", oauthCallbackHandler(sessionRepo, shopifyService, webhookManager, logger))
 
 	// Webhook endpoint: POST /webhooks/shopify/{projectId}/{environment}
-	r.Post("/webhooks/shopify/{projectId}/{environment}", webhookHandler(shopifyService, webhookDispatcher, logger))
+	r.Post("/webhooks/shopify/{projectId}/{environment}", webhookHandler(shopifyService, webhookDispatcher, webhookPubSub, logger))
 
 	// REST API Proxy: /api/v1/{project}/{environment}/shopify/*
 	// Note: project and environment are extracted from headers by middleware
 	restProxy := apiinfra.NewRESTProxy(shopifyService, logger)
-	r.HandleFunc("/api/v1/*/shopify/*", restProxy.HandleProxyRequest)
+	r.HandleFunc("/api/v1/{project}/{environment}/shopify/*", restProxy.HandleProxyRequest)
 	r.HandleFunc("/api/v1/shopify/*", restProxy.HandleProxyRequest)
-
-	// Health check
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -177,6 +199,7 @@ func main() {
 
 	logger.Info().Str("port", port).Msg("Starting API server")
 	logger.Info().Msg("GraphQL Playground available at http://localhost:" + port + "/")
+	logger.Info().Msg("Swagger documentation available at http://localhost:" + port + "/swagger/index.html")
 	if err := http.ListenAndServe(":"+port, r); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start server")
 	}
@@ -210,12 +233,31 @@ func oauthInitHandler(sessionRepo *repository.SessionRepository, shopifyService 
 		}
 		state := hex.EncodeToString(stateBytes)
 
-		// Save session
+		// Extract project ID and environment from context (set by middleware)
+		projectID := domain.GetProjectIDFromContext(ctx)
+		environment := domain.GetEnvironmentFromContext(ctx)
+		if projectID == "" {
+			projectID = "default-project" // Fallback
+		}
+		if environment == "" {
+			environment = domain.DefaultEnvironment
+		}
+
+		// Get return URL from query parameter (default to frontend URL if not provided)
+		returnURL := r.URL.Query().Get("return_url")
+		if returnURL == "" {
+			returnURL = "http://localhost:5173" // Default frontend URL
+		}
+
+		// Save session with project ID, environment, and return URL
 		session := &domain.Session{
-			Shop:      shop,
-			State:     state,
-			Scopes:    []string{"read_products", "write_products", "read_orders", "write_orders"},
-			ExpiresAt: time.Now().Add(10 * time.Minute),
+			Shop:        shop,
+			State:       state,
+			Scopes:      []string{"read_products", "write_products", "read_orders", "write_orders"},
+			ProjectID:   projectID,
+			Environment: environment,
+			ReturnURL:   returnURL,
+			ExpiresAt:   time.Now().Add(10 * time.Minute),
 		}
 
 		if err := sessionRepo.CreateSession(ctx, session); err != nil {
@@ -260,20 +302,7 @@ func oauthCallbackHandler(
 			return
 		}
 
-		// Verify HMAC using API secret from config
-		// Note: We need to decrypt the secret for HMAC verification
-		// For now, we'll skip HMAC verification in OAuth callback
-		// In production, add a method to get decrypted secret from service
-		// TODO: Implement proper HMAC verification with decrypted secret
-		// Get config to retrieve API secret for HMAC verification
-		_, err := shopifyService.GetConfig(ctx, "")
-		if err != nil {
-			logger.Error().Err(err).Msg("Failed to get Shopify config")
-			http.Error(w, "Shopify not configured for this project", http.StatusNotFound)
-			return
-		}
-
-		// Verify state
+		// Verify state and get session first (before getting config)
 		session, err := sessionRepo.GetSession(ctx, state)
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to get session")
@@ -286,8 +315,45 @@ func oauthCallbackHandler(
 			return
 		}
 
-		// Delete session
+		// Extract project ID and environment from session (set during OAuth initiation)
+		projectID := session.ProjectID
+		environment := session.Environment
+		if projectID == "" {
+			projectID = "default-project" // Fallback
+		}
+		if environment == "" {
+			environment = domain.DefaultEnvironment
+		}
+
+		// Set project ID and environment in context for downstream handlers
+		ctx = domain.WithProjectID(ctx, projectID)
+		ctx = domain.WithEnvironment(ctx, environment)
+		ctx = domain.WithTenantID(ctx, projectID)
+
+		// Store session in context so ExchangeToken can access scopes
+		ctx = context.WithValue(ctx, oauthSessionKey, session)
+
+		// Verify HMAC using API secret from config
+		// Note: We need to decrypt the secret for HMAC verification
+		// For now, we'll skip HMAC verification in OAuth callback
+		// In production, add a method to get decrypted secret from service
+		// TODO: Implement proper HMAC verification with decrypted secret
+		// Get config to retrieve API secret for HMAC verification (now with correct tenant ID)
+		_, err = shopifyService.GetConfig(ctx, projectID)
+		if err != nil {
+			logger.Error().Err(err).Str("projectID", projectID).Msg("Failed to get Shopify config")
+			http.Error(w, "Shopify not configured for this project", http.StatusNotFound)
+			return
+		}
+
+		// Delete session (but keep it in context for ExchangeToken)
 		sessionRepo.DeleteSession(ctx, state)
+
+		// Log requested scopes for debugging
+		logger.Info().
+			Str("shop", shop).
+			Strs("requested_scopes", session.Scopes).
+			Msg("Exchanging OAuth token - requested scopes")
 
 		// Exchange token
 		shopDomain, err := shopifyService.ExchangeToken(ctx, shop, code)
@@ -296,6 +362,12 @@ func oauthCallbackHandler(
 			http.Error(w, "Failed to complete installation", http.StatusInternalServerError)
 			return
 		}
+
+		// Log what scopes were stored (note: these are requested, not necessarily granted)
+		logger.Info().
+			Str("shop", shop).
+			Strs("stored_scopes", shopDomain.Scopes).
+			Msg("OAuth token exchange completed - scopes stored")
 
 		// Subscribe to webhooks
 		topics := webhookManager.GetDefaultTopics()
@@ -306,18 +378,26 @@ func oauthCallbackHandler(
 			Interface("topics", topics).
 			Msg("Would subscribe to webhooks")
 
-		// Redirect to success page
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `
-			<html>
-				<head><title>Installation Complete</title></head>
-				<body>
-					<h1>Installation Complete!</h1>
-					<p>Shop: %s</p>
-					<p>You can now close this window.</p>
-				</body>
-			</html>
-		`, shopDomain.Domain)
+		// Redirect back to frontend with success status
+		returnURL := session.ReturnURL
+		if returnURL == "" {
+			// Fallback to default frontend URL
+			returnURL = "http://localhost:5173"
+		}
+
+		// Add success parameters to return URL
+		redirectURL := fmt.Sprintf("%s?shopify_oauth=success&shop=%s&domain=%s",
+			returnURL,
+			url.QueryEscape(shop),
+			url.QueryEscape(shopDomain.Domain),
+		)
+
+		logger.Info().
+			Str("shop", shop).
+			Str("returnURL", redirectURL).
+			Msg("Redirecting to frontend after successful OAuth")
+
+		http.Redirect(w, r, redirectURL, http.StatusFound)
 	}
 }
 
@@ -325,6 +405,7 @@ func oauthCallbackHandler(
 func webhookHandler(
 	shopifyService *application.ShopifyService,
 	webhookDispatcher *application.WebhookDispatcher,
+	webhookPubSub *pubsub.WebhookPubSub,
 	logger zerolog.Logger,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -417,6 +498,9 @@ func webhookHandler(
 			// Continue processing even if logging fails
 		}
 
+		// Publish to pub/sub for GraphQL subscriptions
+		webhookPubSub.Publish(event)
+
 		// Dispatch to handlers
 		if err := webhookDispatcher.Dispatch(ctx, event); err != nil {
 			logger.Error().
@@ -439,8 +523,19 @@ func webhookHandler(
 }
 
 // tenantIDMiddleware extracts project ID and environment from headers
+// Skips public routes like /health, /swagger/*, and OAuth routes
 func tenantIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip middleware for public routes and OAuth routes
+		path := r.URL.Path
+		if path == "/health" ||
+			path == "/swagger/doc.json" ||
+			path == "/auth/callback" ||
+			(len(path) > 8 && path[:9] == "/swagger/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Extract project ID from header (mandatory)
 		projectID := r.Header.Get("X-Project-ID")
 		if projectID == "" {

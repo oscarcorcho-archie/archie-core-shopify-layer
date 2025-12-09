@@ -8,6 +8,7 @@ import (
 	"archie-core-shopify-layer/internal/domain"
 	"archie-core-shopify-layer/internal/infrastructure/repository/entity"
 	"archie-core-shopify-layer/internal/ports"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -75,13 +76,24 @@ func (r *MongoShopifyConfigRepository) Create(ctx context.Context, config *domai
 	projectID := config.ProjectID
 	environment := config.Environment
 
-	// Find project
+	// Find project or create if it doesn't exist
 	var project entity.MongoProjectDoc
 	err := r.collection.FindOne(ctx, bson.M{"projectId": projectID}).Decode(&project)
 	if err == mongo.ErrNoDocuments {
-		return fmt.Errorf("project not found: %s", projectID)
-	}
-	if err != nil {
+		// Project doesn't exist, create it
+		project = entity.MongoProjectDoc{
+			ID:        primitive.NewObjectID(),
+			ProjectID: projectID,
+			Settings: entity.MongoProjectSettings{
+				ShopifyConfigs: []entity.MongoShopifyConfigDoc{},
+			},
+			UpdatedAt: time.Now(),
+		}
+		_, err = r.collection.InsertOne(ctx, project)
+		if err != nil {
+			return fmt.Errorf("failed to create project: %w", err)
+		}
+	} else if err != nil {
 		return fmt.Errorf("failed to get project: %w", err)
 	}
 
@@ -143,9 +155,9 @@ func (r *MongoShopifyConfigRepository) Update(ctx context.Context, tenantID stri
 		"$set": bson.M{
 			"settings.shopify_configs.$[elem].encryptedKey":  config.EncryptedKey,
 			"settings.shopify_configs.$[elem].apiKey":        config.APIKey,
-			"settings.shopify_configs.$[elem].webhookSecret":  config.WebhookSecret,
-			"settings.shopify_configs.$[elem].webhookURL":     config.WebhookURL,
-			"settings.shopify_configs.$[elem].updatedAt":      time.Now(),
+			"settings.shopify_configs.$[elem].webhookSecret": config.WebhookSecret,
+			"settings.shopify_configs.$[elem].webhookURL":    config.WebhookURL,
+			"settings.shopify_configs.$[elem].updatedAt":     time.Now(),
 			"updatedAt": time.Now(),
 		},
 	}
@@ -171,3 +183,47 @@ func (r *MongoShopifyConfigRepository) Update(ctx context.Context, tenantID stri
 	return nil
 }
 
+// Delete deletes a Shopify configuration from a project's settings.shopify_configs[]
+func (r *MongoShopifyConfigRepository) Delete(ctx context.Context, tenantID string) error {
+	// Extract projectID and environment from context (type-safe)
+	projectID := domain.GetProjectIDFromContext(ctx)
+	environment := domain.GetEnvironmentFromContext(ctx)
+
+	if projectID == "" {
+		projectID = tenantID // Fallback
+	}
+	if environment == "" {
+		environment = domain.DefaultEnvironment // Default
+	}
+
+	// Remove the shopify_config from the array
+	update := bson.M{
+		"$pull": bson.M{
+			"settings.shopify_configs": bson.M{
+				"env": environment,
+			},
+		},
+		"$set": bson.M{
+			"updatedAt": time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"projectId": projectID},
+		update,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete shopify config: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("project not found: %s", projectID)
+	}
+
+	if result.ModifiedCount == 0 {
+		return fmt.Errorf("shopify config not found for project %s and environment %s", projectID, environment)
+	}
+
+	return nil
+}

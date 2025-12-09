@@ -3,6 +3,7 @@ package shopify
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"archie-core-shopify-layer/internal/ports"
@@ -57,8 +58,37 @@ func (c *client) createClient(shopDomain string, accessToken string) (*goshopify
 
 // Authentication methods
 
-func (c *client) GenerateAuthURL(shop string, scopes []string) (string, error) {
-	return c.app.AuthorizeUrl(shop, strings.Join(scopes, ","))
+func (c *client) GenerateAuthURL(shop string, scopes []string, redirectURI string, state string) (string, error) {
+	// The go-shopify library's AuthorizeUrl doesn't accept redirect_uri directly
+	// We need to manually construct the URL with redirect_uri and state parameters
+	// Shopify expects scopes to be comma-separated (no spaces)
+	scopesStr := strings.Join(scopes, ",")
+
+	// Log scopes for debugging (use Info level so it's visible)
+	c.logger.Info().
+		Str("shop", shop).
+		Strs("scopes", scopes).
+		Str("scopes_string", scopesStr).
+		Int("scope_count", len(scopes)).
+		Msg("Generating OAuth authorization URL with scopes")
+
+	authURL := fmt.Sprintf(
+		"https://%s/admin/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s&state=%s",
+		shop,
+		c.apiKey,
+		url.QueryEscape(scopesStr),
+		url.QueryEscape(redirectURI),
+		url.QueryEscape(state),
+	)
+
+	// Log the full URL (but mask sensitive parts)
+	c.logger.Info().
+		Str("shop", shop).
+		Str("scopes_in_url", scopesStr).
+		Str("auth_url_masked", fmt.Sprintf("https://%s/admin/oauth/authorize?client_id=%s&scope=%s&redirect_uri=...&state=...", shop, c.apiKey, scopesStr)).
+		Msg("Generated OAuth authorization URL")
+
+	return authURL, nil
 }
 
 func (c *client) ExchangeToken(ctx context.Context, shop string, code string) (string, error) {
