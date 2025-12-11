@@ -15,6 +15,7 @@ type Resolver struct {
 	credentialsService *application.CredentialsService
 	webhookPubSub      *pubsub.WebhookPubSub
 	sessionRepo        *repository.SessionRepository
+	integrationService *application.IntegrationService
 }
 
 // NewResolver creates a new GraphQL resolver
@@ -23,11 +24,13 @@ func NewResolver(
 	credentialsService *application.CredentialsService,
 	webhookPubSub *pubsub.WebhookPubSub,
 	sessionRepo *repository.SessionRepository,
+	integrationService *application.IntegrationService,
 ) *Resolver {
 	return &Resolver{
 		shopifyService:     shopifyService,
 		credentialsService: credentialsService,
 		webhookPubSub:      webhookPubSub,
 		sessionRepo:        sessionRepo,
+		integrationService: integrationService,
 	}
 }

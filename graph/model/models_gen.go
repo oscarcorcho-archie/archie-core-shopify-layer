@@ -33,6 +33,16 @@ type ConfigureShopifyPayload struct {
 	UpdatedAt   scalars.Time `json:"updatedAt"`
 }
 
+type CreateIntegrationInput struct {
+	ProjectID   string `json:"projectId"`
+	Environment string `json:"environment"`
+	ShopDomain  string `json:"shopDomain"`
+}
+
+type CreateIntegrationPayload struct {
+	Integration *Integration `json:"integration"`
+}
+
 type Customer struct {
 	ID          string       `json:"id"`
 	Email       *string      `json:"email,omitempty"`
@@ -62,6 +72,16 @@ type InstallAppInput struct {
 
 type InstallAppPayload struct {
 	AuthURL string `json:"authUrl"`
+}
+
+type Integration struct {
+	ID          string       `json:"id"`
+	Key         string       `json:"key"`
+	ProjectID   string       `json:"projectId"`
+	Environment string       `json:"environment"`
+	ShopDomain  string       `json:"shopDomain"`
+	CreatedAt   scalars.Time `json:"createdAt"`
+	UpdatedAt   scalars.Time `json:"updatedAt"`
 }
 
 type InventoryLevel struct {

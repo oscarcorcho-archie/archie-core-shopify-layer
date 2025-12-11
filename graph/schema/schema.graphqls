@@ -106,6 +106,29 @@ type ShopifyConfig {
   updatedAt: Time!
 }
 
+# Integration represents a Shopify integration key
+type Integration {
+  id: ID!
+  key: String!
+  projectId: String!
+  environment: String!
+  shopDomain: String!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+# Input for creating an integration
+input CreateIntegrationInput {
+  projectId: String!
+  environment: String!
+  shopDomain: String!
+}
+
+# Payload returned after creating an integration
+type CreateIntegrationPayload {
+  integration: Integration!
+}
+
 # Input for configuring Shopify
 input ConfigureShopifyInput {
   apiKey: String!
@@ -163,6 +186,9 @@ type Query {
   
   # Credentials operations (deprecated)
   shopify_getCredentials(projectId: String!, environment: String!): ShopifyCredentials
+  
+  # Integration operations
+  getIntegrationByKey(key: String!): Integration
 }
 
 type Mutation {
@@ -176,6 +202,10 @@ type Mutation {
   # Credentials operations (deprecated - use configureShopify)
   shopify_configureCredentials(input: ConfigureCredentialsInput!): ConfigureCredentialsPayload!
   shopify_deleteCredentials(projectId: String!, environment: String!): Boolean!
+  
+  # Integration operations
+  createIntegration(input: CreateIntegrationInput!): CreateIntegrationPayload!
+  deleteIntegration(key: String!): Boolean!
 }
 
 # Webhook event filter for subscriptions

@@ -86,6 +86,7 @@ func main() {
 	sessionRepo := repository.NewSessionRepository(db)
 	configRepo := repository.NewMongoShopifyConfigRepository(db)
 	webhookSubscriptionRepo := repository.NewMongoWebhookSubscriptionRepository(db)
+	integrationRepo := repository.NewMongoIntegrationRepository(db)
 
 	// Initialize rate limiter and retry config for Shopify API
 	rateLimiter := shopifyinfra.NewRateLimiter(logger)
@@ -111,6 +112,11 @@ func main() {
 		appURL,
 	)
 
+	integrationService := application.NewIntegrationService(
+		integrationRepo,
+		logger,
+	)
+
 	webhookManager := application.NewWebhookManager(
 		shopifyService,
 		logger,
@@ -128,7 +134,7 @@ func main() {
 	webhookPubSub := pubsub.NewWebhookPubSub(logger)
 
 	// Create GraphQL resolver
-	resolver := graph.NewResolver(shopifyService, credentialsService, webhookPubSub, sessionRepo)
+	resolver := graph.NewResolver(shopifyService, credentialsService, webhookPubSub, sessionRepo, integrationService)
 
 	// Create GraphQL executable schema
 	execSchema := generated.NewExecutableSchema(generated.Config{
@@ -157,8 +163,9 @@ func main() {
 	}))
 
 	// Add tenant ID middleware (extracts project ID and environment from headers)
+	// This middleware supports both X-Project-ID (existing) and X-Integration-Key (new) authentication
 	// This middleware will skip public routes like /health and /swagger/*
-	r.Use(tenantIDMiddleware)
+	r.Use(createTenantIDMiddleware(integrationService, logger))
 
 	// Public routes (no tenant ID required)
 	// Health check - must be public for monitoring
@@ -181,7 +188,7 @@ func main() {
 
 	// OAuth routes
 	r.Get("/auth/shopify", oauthInitHandler(sessionRepo, shopifyService, appURL, logger))
-	r.Get("/auth/callback", oauthCallbackHandler(sessionRepo, shopifyService, webhookManager, logger))
+	r.Get("/auth/callback", oauthCallbackHandler(sessionRepo, shopifyService, webhookManager, integrationService, logger))
 
 	// Webhook endpoint: POST /webhooks/shopify/{projectId}/{environment}
 	r.Post("/webhooks/shopify/{projectId}/{environment}", webhookHandler(shopifyService, webhookDispatcher, webhookPubSub, logger))
@@ -287,6 +294,7 @@ func oauthCallbackHandler(
 	sessionRepo *repository.SessionRepository,
 	shopifyService *application.ShopifyService,
 	webhookManager *application.WebhookManager,
+	integrationService *application.IntegrationService,
 	logger zerolog.Logger,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -385,12 +393,33 @@ func oauthCallbackHandler(
 			returnURL = "http://localhost:5173"
 		}
 
+		// Create integration key for this project/environment/shop combination
+		integration, err := integrationService.CreateIntegration(ctx, application.CreateIntegrationInput{
+			ProjectID:   projectID,
+			Environment: environment,
+			ShopDomain:  shopDomain.Domain,
+		})
+		if err != nil {
+			logger.Error().Err(err).Msg("Failed to create integration after OAuth")
+			// Don't fail the OAuth flow if integration creation fails
+		} else {
+			logger.Info().
+				Str("projectID", projectID).
+				Str("environment", environment).
+				Str("shopDomain", shopDomain.Domain).
+				Str("integrationKey", integration.Key).
+				Msg("Created integration after successful OAuth")
+		}
+
 		// Add success parameters to return URL
 		redirectURL := fmt.Sprintf("%s?shopify_oauth=success&shop=%s&domain=%s",
 			returnURL,
 			url.QueryEscape(shop),
 			url.QueryEscape(shopDomain.Domain),
 		)
+		if integration != nil {
+			redirectURL += "&integration_key=" + url.QueryEscape(integration.Key)
+		}
 
 		logger.Info().
 			Str("shop", shop).
@@ -522,39 +551,64 @@ func webhookHandler(
 	}
 }
 
-// tenantIDMiddleware extracts project ID and environment from headers
-// Skips public routes like /health, /swagger/*, and OAuth routes
-func tenantIDMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip middleware for public routes and OAuth routes
-		path := r.URL.Path
-		if path == "/health" ||
-			path == "/swagger/doc.json" ||
-			path == "/auth/callback" ||
-			(len(path) > 8 && path[:9] == "/swagger/") {
-			next.ServeHTTP(w, r)
-			return
-		}
+// createTenantIDMiddleware creates middleware that supports both X-Project-ID and X-Integration-Key authentication
+func createTenantIDMiddleware(integrationService *application.IntegrationService, logger zerolog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip middleware for public routes and OAuth routes
+			path := r.URL.Path
+			if path == "/health" ||
+				path == "/swagger/doc.json" ||
+				path == "/auth/callback" ||
+				(len(path) > 8 && path[:9] == "/swagger/") {
+				next.ServeHTTP(w, r)
+				return
+			}
 
-		// Extract project ID from header (mandatory)
-		projectID := r.Header.Get("X-Project-ID")
-		if projectID == "" {
-			http.Error(w, "X-Project-ID header is required", http.StatusBadRequest)
-			return
-		}
+			ctx := r.Context()
+			var projectID, environment string
 
-		// Extract environment from header (defaults to "master" if not provided)
-		environment := r.Header.Get("environment")
-		if environment == "" {
-			environment = domain.DefaultEnvironment // Default environment
-		}
+			// Check for integration key first (new method)
+			integrationKey := r.Header.Get("X-Integration-Key")
+			if integrationKey != "" {
+				integration, err := integrationService.GetIntegrationByKey(ctx, integrationKey)
+				if err != nil {
+					logger.Error().Err(err).Str("key", integrationKey).Msg("Failed to get integration by key")
+					http.Error(w, "Invalid integration key", http.StatusUnauthorized)
+					return
+				}
 
-		// Add to context (type-safe)
-		ctx := domain.WithProjectID(r.Context(), projectID)
-		ctx = domain.WithEnvironment(ctx, environment)
-		// Keep tenantId for backward compatibility (using projectID)
-		ctx = domain.WithTenantID(ctx, projectID)
+				projectID = integration.ProjectID
+				environment = integration.Environment
 
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+				logger.Debug().
+					Str("integrationKey", integrationKey).
+					Str("projectID", projectID).
+					Str("environment", environment).
+					Str("shopDomain", integration.ShopDomain).
+					Msg("Authenticated using integration key")
+			} else {
+				// Fallback to X-Project-ID (existing method)
+				projectID = r.Header.Get("X-Project-ID")
+				if projectID == "" {
+					http.Error(w, "X-Project-ID or X-Integration-Key header is required", http.StatusBadRequest)
+					return
+				}
+
+				// Extract environment from header (defaults to "master" if not provided)
+				environment = r.Header.Get("environment")
+				if environment == "" {
+					environment = domain.DefaultEnvironment // Default environment
+				}
+			}
+
+			// Add to context (type-safe)
+			ctx = domain.WithProjectID(ctx, projectID)
+			ctx = domain.WithEnvironment(ctx, environment)
+			// Keep tenantId for backward compatibility (using projectID)
+			ctx = domain.WithTenantID(ctx, projectID)
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }

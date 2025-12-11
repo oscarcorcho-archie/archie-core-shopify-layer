@@ -175,6 +175,39 @@ func (r *mutationResolver) ShopifyDeleteCredentials(ctx context.Context, project
 	return true, nil
 }
 
+// CreateIntegration is the resolver for the createIntegration field.
+func (r *mutationResolver) CreateIntegration(ctx context.Context, input model.CreateIntegrationInput) (*model.CreateIntegrationPayload, error) {
+	integration, err := r.integrationService.CreateIntegration(ctx, application.CreateIntegrationInput{
+		ProjectID:   input.ProjectID,
+		Environment: input.Environment,
+		ShopDomain:  input.ShopDomain,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.CreateIntegrationPayload{
+		Integration: &model.Integration{
+			ID:          integration.ID,
+			Key:         integration.Key,
+			ProjectID:   integration.ProjectID,
+			Environment: integration.Environment,
+			ShopDomain:  integration.ShopDomain,
+			CreatedAt:   scalars.Time(integration.CreatedAt),
+			UpdatedAt:   scalars.Time(integration.UpdatedAt),
+		},
+	}, nil
+}
+
+// DeleteIntegration is the resolver for the deleteIntegration field.
+func (r *mutationResolver) DeleteIntegration(ctx context.Context, key string) (bool, error) {
+	err := r.integrationService.DeleteIntegration(ctx, key)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ShopifyShop is the resolver for the shopify_shop field.
 func (r *queryResolver) ShopifyShop(ctx context.Context, domain string) (*model.Shop, error) {
 	shop, err := r.shopifyService.GetShop(ctx, domain)
@@ -509,6 +542,24 @@ func (r *queryResolver) ShopifyGetCredentials(ctx context.Context, projectID str
 		APIKey:      creds.APIKey,
 		CreatedAt:   scalars.Time(creds.CreatedAt),
 		UpdatedAt:   scalars.Time(creds.UpdatedAt),
+	}, nil
+}
+
+// GetIntegrationByKey is the resolver for the getIntegrationByKey field.
+func (r *queryResolver) GetIntegrationByKey(ctx context.Context, key string) (*model.Integration, error) {
+	integration, err := r.integrationService.GetIntegrationByKey(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.Integration{
+		ID:          integration.ID,
+		Key:         integration.Key,
+		ProjectID:   integration.ProjectID,
+		Environment: integration.Environment,
+		ShopDomain:  integration.ShopDomain,
+		CreatedAt:   scalars.Time(integration.CreatedAt),
+		UpdatedAt:   scalars.Time(integration.UpdatedAt),
 	}, nil
 }
 
