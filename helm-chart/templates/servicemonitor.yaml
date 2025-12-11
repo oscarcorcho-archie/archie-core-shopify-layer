@@ -1,0 +1,25 @@
+{{- if and .Values.monitoring.enabled (lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" "servicemonitors.monitoring.coreos.com") }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "archie-core-shopify-layer.fullname" . }}
+  namespace: {{ include "archie-core-shopify-layer.namespace" . }}
+  labels:
+    {{- include "archie-core-shopify-layer.labels" . | nindent 4 }}
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      {{- include "archie-core-shopify-layer.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.monitoring.metricsPath }}
+      interval: {{ .Values.monitoring.scrapeInterval }}
+      scrapeTimeout: {{ .Values.monitoring.scrapeTimeout }}
+      honorLabels: true
+  namespaceSelector:
+    matchNames:
+      - {{ include "archie-core-shopify-layer.namespace" . }}
+{{- end }}
+

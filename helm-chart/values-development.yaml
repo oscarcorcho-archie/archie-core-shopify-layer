@@ -1,0 +1,93 @@
+# Development environment specific values for archie-core-shopify-layer
+# Inherits from values.yaml and overrides specific values
+
+image:
+  repository: '245902330494.dkr.ecr.us-east-1.amazonaws.com/archie-core-shopify-layer'
+  tag: 'latest'
+  pullPolicy: Always
+
+# Application configuration for development
+app:
+  name: archie-core-shopify-layer
+  port: 8080
+  environment: 'development'
+
+# Replica configuration for development
+replicaCount: 1
+
+# Resource configuration for development
+resources:
+  requests:
+    cpu: '100m'
+    memory: '128Mi'
+  limits:
+    cpu: '200m'
+    memory: '256Mi'
+
+# Autoscaling for development
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# MongoDB configuration for development
+mongodb:
+  uri: '' # Set via --set-string in CI/CD
+  database: 'shopify_layer'
+
+# Redis configuration for development
+redis:
+  enabled: false
+  # url set via --set-string in CI/CD
+
+# Encryption configuration for development
+encryption:
+  key: '' # Set via --set-string in CI/CD
+
+# Shopify configuration for development
+shopify:
+  apiKey: '' # Set via --set-string in CI/CD
+  apiSecret: '' # Set via --set-string in CI/CD
+
+# Application URL configuration for development
+appUrl: 'http://localhost:8080'
+
+# Logging for development
+logging:
+  level: 'info'
+
+# Labels for development
+labels:
+  project: archie-core
+  environment: development
+
+# Monitoring - enabled for development
+monitoring:
+  enabled: true
+
+# Namespace - use existing archie-core namespace
+namespace:
+  create: false
+
+# Health checks - development configuration
+healthCheck:
+  startup:
+    path: /health
+    failureThreshold: 30
+    periodSeconds: 10
+  readiness:
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 10
+    successThreshold: 1
+    failureThreshold: 5
+  liveness:
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 15
+    failureThreshold: 5
+

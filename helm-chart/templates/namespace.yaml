@@ -1,0 +1,20 @@
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "archie-core-shopify-layer.namespace" . }}
+  labels:
+    {{- include "archie-core-shopify-layer.labels" . | nindent 4 }}
+    name: {{ include "archie-core-shopify-layer.namespace" . }}
+{{- end }}
+---
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "archie-core-shopify-layer.serviceAccountName" . }}
+  namespace: {{ include "archie-core-shopify-layer.namespace" . }}
+  labels:
+    {{- include "archie-core-shopify-layer.labels" . | nindent 4 }}
+{{- end }}
+

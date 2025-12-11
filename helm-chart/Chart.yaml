@@ -1,0 +1,19 @@
+apiVersion: v2
+name: archie-core-shopify-layer
+description: Helm chart for Archie Core Shopify Layer Service
+type: application
+version: 0.1.0
+appVersion: '1.0.0'
+keywords:
+  - archie-core
+  - shopify
+  - golang
+  - mongodb
+  - redis
+home: https://github.com/8base-archie/archie-core-shopify-layer
+sources:
+  - https://github.com/8base-archie/archie-core-shopify-layer
+maintainers:
+  - name: Archie Team
+    email: dev@archie.com
+

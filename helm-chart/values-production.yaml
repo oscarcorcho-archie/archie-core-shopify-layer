@@ -1,0 +1,96 @@
+# Production environment specific values for archie-core-shopify-layer
+# Inherits from values.yaml and overrides specific values
+
+image:
+  repository: '814650755390.dkr.ecr.us-east-1.amazonaws.com/archie-core-shopify-layer'
+  tag: 'production-latest'
+  pullPolicy: Always
+
+# Application configuration for production
+app:
+  name: archie-core-shopify-layer
+  port: 8080
+  environment: 'production'
+
+# Replica configuration for production (higher than staging)
+replicaCount: 3
+
+# Resource configuration for production (highest)
+resources:
+  requests:
+    cpu: '200m'
+    memory: '512Mi'
+  limits:
+    cpu: '1000m'
+    memory: '1Gi'
+
+# Autoscaling for production
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 70 # More conservative for production
+  targetMemoryUtilizationPercentage: 80
+
+# MongoDB configuration for production
+mongodb:
+  uri: '' # Set via --set-string in CI/CD
+  database: 'shopify_layer'
+
+# Redis configuration for production
+redis:
+  enabled: true
+  # url set via --set-string in CI/CD
+
+# Encryption configuration for production
+encryption:
+  key: '' # Set via --set-string in CI/CD
+
+# Shopify configuration for production
+shopify:
+  apiKey: '' # Set via --set-string in CI/CD
+  apiSecret: '' # Set via --set-string in CI/CD
+
+# Application URL configuration for production
+appUrl: '' # Set via --set-string in CI/CD
+
+# Logging for production
+logging:
+  level: 'warn'        # Less verbose logging in production
+
+# Labels for production
+labels:
+  project: archie-core
+  environment: production
+
+# Monitoring - enabled for production
+monitoring:
+  enabled: true
+
+# Namespace - use existing archie-core namespace
+namespace:
+  create: false
+
+# Health checks - production should be more robust
+healthCheck:
+  startup:
+    path: /health
+    failureThreshold: 30
+    periodSeconds: 10
+  readiness:
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 10
+    successThreshold: 1
+    failureThreshold: 2  # More tolerant in production
+  liveness:
+    path: /health
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 15
+    failureThreshold: 2  # More tolerant in production
+
+# Grace period for production (longer for graceful shutdowns)
+terminationGracePeriodSeconds: 120
+

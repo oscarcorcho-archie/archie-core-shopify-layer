@@ -1,0 +1,93 @@
+# Staging environment specific values for archie-core-shopify-layer
+# Inherits from values.yaml and overrides specific values
+
+image:
+  repository: '027922993884.dkr.ecr.us-east-1.amazonaws.com/archie-core-shopify-layer'
+  tag: 'staging-latest'
+  pullPolicy: Always
+
+# Application configuration for staging
+app:
+  name: archie-core-shopify-layer
+  port: 8080
+  environment: 'staging'
+
+# Replica configuration for staging
+replicaCount: 2
+
+# Resource configuration for staging
+resources:
+  requests:
+    cpu: '200m'
+    memory: '256Mi'
+  limits:
+    cpu: '500m'
+    memory: '512Mi'
+
+# Autoscaling for staging
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# MongoDB configuration for staging
+mongodb:
+  uri: '' # Set via --set-string in CI/CD
+  database: 'shopify_layer'
+
+# Redis configuration for staging
+redis:
+  enabled: true
+  # url set via --set-string in CI/CD
+
+# Encryption configuration for staging
+encryption:
+  key: '' # Set via --set-string in CI/CD
+
+# Shopify configuration for staging
+shopify:
+  apiKey: '' # Set via --set-string in CI/CD
+  apiSecret: '' # Set via --set-string in CI/CD
+
+# Application URL configuration for staging
+appUrl: '' # Set via --set-string in CI/CD
+
+# Logging for staging
+logging:
+  level: 'info'
+
+# Labels for staging
+labels:
+  project: archie-core
+  environment: staging
+
+# Monitoring - enabled for staging
+monitoring:
+  enabled: true
+
+# Namespace - use existing archie-core namespace
+namespace:
+  create: false
+
+# Health checks - staging configuration
+healthCheck:
+  startup:
+    path: /health
+    failureThreshold: 30
+    periodSeconds: 10
+  readiness:
+    path: /health
+    initialDelaySeconds: 20
+    periodSeconds: 5
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
+  liveness:
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+

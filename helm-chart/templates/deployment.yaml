@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "archie-core-shopify-layer.fullname" . }}
+  namespace: {{ include "archie-core-shopify-layer.namespace" . }}
+  labels:
+    {{- include "archie-core-shopify-layer.labels" . | nindent 4 }}
+  annotations:
+    {{- include "archie-core-shopify-layer.annotations" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  progressDeadlineSeconds: 600
+  minReadySeconds: 10
+  strategy:
+    type: {{ .Values.strategy.type }}
+    {{- if eq .Values.strategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxUnavailable: {{ .Values.strategy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.strategy.rollingUpdate.maxSurge }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "archie-core-shopify-layer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "archie-core-shopify-layer.labels" . | nindent 8 }}
+      annotations:
+        {{- include "archie-core-shopify-layer.prometheusAnnotations" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "archie-core-shopify-layer.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Values.app.name }}
+          image: {{ include "archie-core-shopify-layer.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "archie-core-shopify-layer.fullname" . }}-config
+            - secretRef:
+                name: {{ include "archie-core-shopify-layer.fullname" . }}-secrets
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.port }}
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: {{ .Values.healthCheck.startup.path }}
+              port: http
+            failureThreshold: {{ .Values.healthCheck.startup.failureThreshold }}
+            periodSeconds: {{ .Values.healthCheck.startup.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.healthCheck.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.healthCheck.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthCheck.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthCheck.readiness.timeoutSeconds }}
+            successThreshold: {{ .Values.healthCheck.readiness.successThreshold }}
+            failureThreshold: {{ .Values.healthCheck.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.healthCheck.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.healthCheck.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthCheck.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthCheck.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.healthCheck.liveness.failureThreshold }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ['sh', '-c', 'sleep 15']
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+

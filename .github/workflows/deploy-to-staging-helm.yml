@@ -1,0 +1,30 @@
+name: Deploy to Staging
+
+on:
+  workflow_dispatch: # Manual trigger
+  push:
+    branches: [staging] # Auto trigger on staging branch
+
+# Prevent multiple deployments from running simultaneously
+concurrency:
+  group: archie-core-shopify-layer-deploy-staging
+  cancel-in-progress: true # Don't cancel in-progress deployments, queue them instead
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-common.yml
+    with:
+      environment: 'staging'
+      cluster_name: 'archie-cluster'
+      values_file: 'values-staging.yaml'
+      docker_tag_suffix: 'staging-latest'
+      enable_production_validations: false
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      MONGO_URI: ${{ secrets.MONGO_URI }}
+      ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+      SHOPIFY_API_KEY: ${{ secrets.SHOPIFY_API_KEY }}
+      SHOPIFY_API_SECRET: ${{ secrets.SHOPIFY_API_SECRET }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+

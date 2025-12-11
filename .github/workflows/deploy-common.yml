@@ -1,0 +1,322 @@
+name: Common Deployment Workflow
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to deploy to (development, staging, production)'
+        required: true
+        type: string
+      cluster_name:
+        description: 'EKS cluster name'
+        required: true
+        type: string
+      values_file:
+        description: 'Helm values file to use'
+        required: true
+        type: string
+      docker_tag_suffix:
+        description: 'Suffix for Docker tag (latest, staging-latest, production-latest)'
+        required: true
+        type: string
+      enable_production_validations:
+        description: 'Enable production-specific validations and safety measures'
+        required: false
+        type: boolean
+        default: false
+      version_tag:
+        description: 'Version tag for production deployments'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        description: 'AWS Access Key ID for ECR'
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        description: 'AWS Secret Access Key for ECR'
+        required: true
+      MONGO_URI:
+        description: 'MongoDB URI'
+        required: true
+      ENCRYPTION_KEY:
+        description: 'Encryption Key'
+        required: true
+      SHOPIFY_API_KEY:
+        description: 'Shopify API Key'
+        required: true
+      SHOPIFY_API_SECRET:
+        description: 'Shopify API Secret'
+        required: true
+      REDIS_URL:
+        description: 'Redis URL for cache (optional)'
+        required: false
+
+env:
+  AWS_DEFAULT_REGION: us-east-1
+
+jobs:
+  unit-tests:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version_tag || github.sha }}
+
+      - name: 🐹 Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: 📦 Download dependencies
+        run: |
+          echo "📦 Downloading Go modules..."
+          go mod download
+          go mod tidy
+
+      - name: 🧪 Run Unit Tests
+        run: |
+          echo "🧪 Running unit tests..."
+          go test -v ./internal/...
+
+  build:
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version_tag || github.sha }}
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔑 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: 🔐 Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          mask-password: true
+
+      - name: 🏷️ Determine Docker tags
+        id: tags
+        run: |
+          IMAGE_TAG=${{ inputs.version_tag || github.sha }}
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "🏷️ Using image tag: ${IMAGE_TAG}"
+
+      - name: 🐳 Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ vars.DOCKER_REGISTRY_URL }}/archie-core-shopify-layer:${{ steps.tags.outputs.image_tag }}
+            ${{ vars.DOCKER_REGISTRY_URL }}/archie-core-shopify-layer:${{ inputs.docker_tag_suffix }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version_tag || github.sha }}
+
+      - name: 🔑 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: 🔍 Update kubeconfig
+        run: |
+          echo "🔍 Updating kubeconfig for cluster: ${{ inputs.cluster_name }}"
+          aws eks update-kubeconfig --name ${{ inputs.cluster_name }} --region us-east-1
+
+      - name: 🔍 Verify cluster access
+        run: |
+          echo "🔍 Verifying cluster access..."
+          kubectl cluster-info --request-timeout=30s
+          kubectl auth can-i get pods --namespace archie-core
+
+      - name: ⚙️ Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: 🧹 Clean up stuck Helm operations
+        run: |
+          echo "🧹 Checking for stuck Helm operations..."
+
+          # Check if there are any pending operations
+          PENDING_OPERATIONS=$(helm list --all-namespaces --pending --output json | jq length || echo "0")
+
+          if [ "$PENDING_OPERATIONS" -gt 0 ]; then
+            echo "⚠️  Found $PENDING_OPERATIONS pending Helm operation(s). Attempting cleanup..."
+
+            # Try to rollback any pending releases in our namespace
+            helm list --namespace archie-core --pending --short | while read release; do
+              if [ -n "$release" ]; then
+                echo "🔄 Rolling back stuck release: $release"
+                helm rollback "$release" --namespace archie-core || echo "❌ Rollback failed for $release"
+              fi
+            done
+
+            # If archie-core-shopify-layer specifically is stuck, try to force cleanup
+            if helm status archie-core-shopify-layer --namespace archie-core >/dev/null 2>&1; then
+              RELEASE_STATUS=$(helm status archie-core-shopify-layer --namespace archie-core -o json | jq -r '.info.status' 2>/dev/null || echo "unknown")
+              if [ "$RELEASE_STATUS" = "pending-install" ] || [ "$RELEASE_STATUS" = "pending-upgrade" ]; then
+                echo "🔨 archie-core-shopify-layer is stuck in $RELEASE_STATUS state. Forcing cleanup..."
+                kubectl delete secret -l owner=helm,name=archie-core-shopify-layer --namespace archie-core || true
+                echo "✅ Cleaned up stuck archie-core-shopify-layer release"
+              fi
+            fi
+          else
+            echo "✅ No pending Helm operations found"
+          fi
+
+      - name: 💾 Backup current release (production only)
+        if: ${{ inputs.enable_production_validations }}
+        run: |
+          echo "💾 Creating backup of current production release..."
+          
+          if helm status archie-core-shopify-layer --namespace archie-core >/dev/null 2>&1; then
+            CURRENT_REVISION=$(helm status archie-core-shopify-layer --namespace archie-core -o json | jq -r '.version')
+            echo "📝 Current production revision: $CURRENT_REVISION"
+            echo "BACKUP_REVISION=$CURRENT_REVISION" >> $GITHUB_ENV
+          else
+            echo "ℹ️  No existing release found - this is a fresh deployment"
+            echo "BACKUP_REVISION=none" >> $GITHUB_ENV
+          fi
+
+      - name: 🏷️ Set deployment image tag
+        id: deploy_tag
+        run: |
+          IMAGE_TAG=${{ inputs.version_tag || github.sha }}
+          echo "deploy_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "🏷️ Deploying with image tag: ${IMAGE_TAG}"
+
+      - name: 🚀 Deploy with Helm
+        run: |
+          echo "🚀 Starting Helm deployment to ${{ inputs.environment }}..."
+          
+          ATOMIC_FLAG="--atomic"
+          TIMEOUT="10m"
+          
+          # Production gets special treatment
+          if [ "${{ inputs.enable_production_validations }}" = "true" ]; then
+            ATOMIC_FLAG=""  # Don't use atomic for production to allow manual rollback
+            TIMEOUT="15m"   # Longer timeout for production
+            echo "🔒 Production deployment mode enabled"
+          fi
+
+          # First attempt - normal deployment
+          if helm upgrade --install archie-core-shopify-layer ./helm-chart \
+            --namespace archie-core \
+            --create-namespace \
+            --values ./helm-chart/${{ inputs.values_file }} \
+            --set image.repository=${{ vars.DOCKER_REGISTRY_URL }}/archie-core-shopify-layer \
+            --set image.tag=${{ steps.deploy_tag.outputs.deploy_tag }} \
+            --set-string app.port="${{ vars.SERVER_PORT || '8080' }}" \
+            --set-string app.environment="${{ inputs.environment }}" \
+            --set-string mongodb.uri="${{ secrets.MONGO_URI }}" \
+            --set-string mongodb.database="${{ vars.MONGODB_DATABASE || 'shopify_layer' }}" \
+            --set-string encryption.key="${{ secrets.ENCRYPTION_KEY }}" \
+            --set-string shopify.apiKey="${{ secrets.SHOPIFY_API_KEY }}" \
+            --set-string shopify.apiSecret="${{ secrets.SHOPIFY_API_SECRET }}" \
+            --set-string appUrl="${{ vars.APP_URL || 'http://localhost:8080' }}" \
+            --set-string redis.url="${{ secrets.REDIS_URL }}" \
+            --wait \
+            --timeout=$TIMEOUT \
+            $ATOMIC_FLAG; then
+            echo "✅ ${{ inputs.environment }} deployment completed successfully!"
+          else
+            echo "❌ First deployment attempt failed. Checking release status..."
+
+            # Check if the release exists and is in a bad state
+            if helm status archie-core-shopify-layer --namespace archie-core >/dev/null 2>&1; then
+              RELEASE_STATUS=$(helm status archie-core-shopify-layer --namespace archie-core -o json | jq -r '.info.status' 2>/dev/null || echo "unknown")
+              echo "🔍 Current release status: $RELEASE_STATUS"
+
+              if [ "$RELEASE_STATUS" = "failed" ] || [ "$RELEASE_STATUS" = "pending-upgrade" ] || [ "$RELEASE_STATUS" = "pending-install" ]; then
+                echo "🔨 Attempting force deployment as last resort..."
+
+                # Force deployment (last resort)
+                helm upgrade --install archie-core-shopify-layer ./helm-chart \
+                  --namespace archie-core \
+                  --create-namespace \
+                  --values ./helm-chart/${{ inputs.values_file }} \
+                  --set image.repository=${{ vars.DOCKER_REGISTRY_URL }}/archie-core-shopify-layer \
+                  --set image.tag=${{ steps.deploy_tag.outputs.deploy_tag }} \
+                  --set-string app.port="${{ vars.SERVER_PORT || '8080' }}" \
+                  --set-string app.environment="${{ inputs.environment }}" \
+                  --set-string mongodb.uri="${{ secrets.MONGO_URI }}" \
+                  --set-string mongodb.database="${{ vars.MONGODB_DATABASE || 'shopify_layer' }}" \
+                  --set-string encryption.key="${{ secrets.ENCRYPTION_KEY }}" \
+                  --set-string shopify.apiKey="${{ secrets.SHOPIFY_API_KEY }}" \
+                  --set-string shopify.apiSecret="${{ secrets.SHOPIFY_API_SECRET }}" \
+                  --set-string appUrl="${{ vars.APP_URL || 'http://localhost:8080' }}" \
+                  --set-string redis.url="${{ secrets.REDIS_URL }}" \
+                  --force \
+                  --wait \
+                  --timeout=15m
+              fi
+            else
+              echo "❌ Release not found. Re-running deployment failed."
+              
+              # For production, attempt rollback
+              if [ "${{ inputs.enable_production_validations }}" = "true" ] && [ "$BACKUP_REVISION" != "none" ]; then
+                echo "🔄 Attempting automatic rollback to revision $BACKUP_REVISION..."
+                if helm rollback archie-core-shopify-layer $BACKUP_REVISION --namespace archie-core --wait --timeout=10m; then
+                  echo "✅ Rollback completed successfully"
+                  echo "❌ Production deployment failed but rollback succeeded"
+                  exit 1
+                else
+                  echo "❌ Rollback also failed - manual intervention required!"
+                  exit 1
+                fi
+              fi
+              exit 1
+            fi
+          fi
+
+      - name: ✅ Verify deployment
+        run: |
+          echo "✅ ${{ inputs.environment }} deployment completed successfully!"
+          kubectl get pods -n archie-core -l app=archie-core-shopify-layer
+          kubectl get services -n archie-core -l app=archie-core-shopify-layer
+          kubectl get hpa -n archie-core -l app=archie-core-shopify-layer
+
+      - name: 🧪 Basic deployment verification
+        run: |
+          echo "🧪 Verifying ${{ inputs.environment }} deployment..."
+          
+          # Just wait for pods to be ready (basic verification)
+          echo "⏳ Waiting for pods to be ready..."
+          kubectl wait --for=condition=ready pod -l app=archie-core-shopify-layer -n archie-core --timeout=300s
+          
+          echo "✅ All pods are ready - deployment successful!"
+
+      - name: 📝 Create deployment record (production only)
+        if: ${{ inputs.enable_production_validations }}
+        run: |
+          echo "📝 Recording successful production deployment..."
+          echo "🏷️  Version: ${{ inputs.version_tag || github.sha }}"
+          echo "📅 Deployed at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "👤 Deployed by: ${{ github.actor }}"
+          echo "🔗 Commit: ${{ github.sha }}"
+

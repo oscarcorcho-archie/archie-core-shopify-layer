@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "archie-core-shopify-layer.fullname" . }}-config
+  namespace: {{ include "archie-core-shopify-layer.namespace" . }}
+  labels:
+    {{- include "archie-core-shopify-layer.labels" . | nindent 4 }}
+data:
+  # Application Configuration
+  PORT: {{ .Values.app.port | quote }}
+  ENVIRONMENT: {{ .Values.app.environment | quote }}
+  
+  # MongoDB Configuration (non-sensitive)
+  MONGODB_DATABASE: {{ .Values.mongodb.database | quote }}
+  
+  # Redis Configuration (non-sensitive)
+  REDIS_ENABLED: {{ .Values.redis.enabled | quote }}
+  
+  # Application URL Configuration (non-sensitive)
+  {{- if .Values.appUrl }}
+  APP_URL: {{ .Values.appUrl | quote }}
+  {{- end }}
+  
+  # Logging Configuration
+  LOG_LEVEL: {{ .Values.logging.level | quote }}
+

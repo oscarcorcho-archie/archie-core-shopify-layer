@@ -1,0 +1,141 @@
+# Default values for archie-core-shopify-layer.
+# This is a YAML-formatted file.
+# Declare variables to be substituted into your templates.
+
+# Image configuration
+image:
+  repository: '' # Set via --set in CI/CD
+  tag: '' # Set via --set in CI/CD
+  pullPolicy: Always
+
+# Application configuration
+app:
+  name: archie-core-shopify-layer
+  port: 8080
+  environment: 'development'
+
+# Replica configuration
+replicaCount: 1
+
+# Namespace configuration
+namespace:
+  name: archie-core
+  create: true
+
+# Name overrides
+nameOverride: ''
+fullnameOverride: 'archie-core-shopify-layer'
+
+# Service Account
+serviceAccount:
+  create: true
+  name: archie-core-shopify-layer
+
+# Resource configuration
+resources:
+  requests:
+    cpu: '200m'
+    memory: '512Mi'
+  limits:
+    cpu: '1000m'
+    memory: '1Gi'
+
+# Autoscaling configuration
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# MongoDB configuration
+mongodb:
+  uri: '' # Set via --set-string in CI/CD
+  database: 'shopify_layer'
+
+# Redis configuration
+redis:
+  enabled: true
+  url: '' # Set via --set-string in CI/CD
+
+# Encryption configuration
+encryption:
+  key: '' # Set via --set-string in CI/CD
+
+# Shopify configuration
+shopify:
+  apiKey: '' # Set via --set-string in CI/CD
+  apiSecret: '' # Set via --set-string in CI/CD
+
+# Application URL configuration
+appUrl: '' # Set via --set-string in CI/CD
+
+# Logging configuration
+logging:
+  level: 'info'
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  publishNotReadyAddresses: true
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+
+# Health checks configuration
+healthCheck:
+  startup:
+    path: /health
+    failureThreshold: 30
+    periodSeconds: 10
+  readiness:
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 5
+    timeoutSeconds: 3
+    successThreshold: 1
+    failureThreshold: 3
+  liveness:
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  metricsPath: /metrics
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Labels and annotations
+labels:
+  project: archie-core
+  environment: development
+
+# Deployment strategy
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+# Grace period
+terminationGracePeriodSeconds: 60
+

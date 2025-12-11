@@ -1,0 +1,31 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch: # Manual trigger
+  push:
+    branches: [master] # Auto trigger on master branch
+
+# Prevent multiple deployments from running simultaneously
+concurrency:
+  group: archie-core-shopify-layer-deploy-production
+  cancel-in-progress: true # Don't cancel in-progress deployments, queue them instead
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-common.yml
+    with:
+      environment: 'production'
+      cluster_name: 'archie-production'  # Update this with actual production cluster name
+      values_file: 'values-production.yaml'
+      docker_tag_suffix: 'production-latest'
+      enable_production_validations: true
+      version_tag: ${{ github.event.inputs.version_tag }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      MONGO_URI: ${{ secrets.MONGO_URI }}
+      ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+      SHOPIFY_API_KEY: ${{ secrets.SHOPIFY_API_KEY }}
+      SHOPIFY_API_SECRET: ${{ secrets.SHOPIFY_API_SECRET }}
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+
