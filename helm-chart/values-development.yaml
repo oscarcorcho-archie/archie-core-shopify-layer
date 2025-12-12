@@ -52,7 +52,7 @@ shopify:
   apiSecret: '' # Set via --set-string in CI/CD
 
 # Application URL configuration for development
-appUrl: 'http://localhost:8080'
+appUrl: 'https://archie-core-shopify.dev.archie-platform.com'
 
 # Logging for development
 logging:
