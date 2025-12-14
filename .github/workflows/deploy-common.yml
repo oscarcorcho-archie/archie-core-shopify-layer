@@ -120,7 +120,6 @@ jobs:
           context: .
           push: true
           tags: |
-            tags: |
             ${{ vars.DOCKER_REGISTRY_URL }}/shopify-integration-service:${{ steps.tags.outputs.image_tag }}
             ${{ vars.DOCKER_REGISTRY_URL }}/shopify-integration-service:${{ inputs.docker_tag_suffix }}
           cache-from: type=gha
