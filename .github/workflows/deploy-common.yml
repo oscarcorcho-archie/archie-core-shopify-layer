@@ -120,8 +120,9 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ vars.DOCKER_REGISTRY_URL }}/archie-core-shopify-layer:${{ steps.tags.outputs.image_tag }}
-            ${{ vars.DOCKER_REGISTRY_URL }}/archie-core-shopify-layer:${{ inputs.docker_tag_suffix }}
+            tags: |
+            ${{ vars.DOCKER_REGISTRY_URL }}/shopify-integration-service:${{ steps.tags.outputs.image_tag }}
+            ${{ vars.DOCKER_REGISTRY_URL }}/shopify-integration-service:${{ inputs.docker_tag_suffix }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -229,7 +230,7 @@ jobs:
             --namespace archie-core \
             --create-namespace \
             --values ./helm-chart/${{ inputs.values_file }} \
-            --set image.repository=${{ vars.DOCKER_REGISTRY_URL }}/archie-core-shopify-layer \
+            --set image.repository=${{ vars.DOCKER_REGISTRY_URL }}/shopify-integration-service \
             --set image.tag=${{ steps.deploy_tag.outputs.deploy_tag }} \
             --set-string app.port="${{ vars.SERVER_PORT || '8080' }}" \
             --set-string app.environment="${{ inputs.environment }}" \
@@ -260,7 +261,7 @@ jobs:
                   --namespace archie-core \
                   --create-namespace \
                   --values ./helm-chart/${{ inputs.values_file }} \
-                  --set image.repository=${{ vars.DOCKER_REGISTRY_URL }}/archie-core-shopify-layer \
+                  --set image.repository=${{ vars.DOCKER_REGISTRY_URL }}/shopify-integration-service \
                   --set image.tag=${{ steps.deploy_tag.outputs.deploy_tag }} \
                   --set-string app.port="${{ vars.SERVER_PORT || '8080' }}" \
                   --set-string app.environment="${{ inputs.environment }}" \

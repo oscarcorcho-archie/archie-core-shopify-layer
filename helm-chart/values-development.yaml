@@ -2,7 +2,7 @@
 # Inherits from values.yaml and overrides specific values
 
 image:
-  repository: '245902330494.dkr.ecr.us-east-1.amazonaws.com'
+  repository: '245902330494.dkr.ecr.us-east-1.amazonaws.com/shopify-integration-service'
   tag: 'latest'
   pullPolicy: Always
 
