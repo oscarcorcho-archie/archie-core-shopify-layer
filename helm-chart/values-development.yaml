@@ -2,13 +2,13 @@
 # Inherits from values.yaml and overrides specific values
 
 image:
-  repository: '245902330494.dkr.ecr.us-east-1.amazonaws.com/shopify-integration-service'
+  repository: '245902330494.dkr.ecr.us-east-1.amazonaws.com'
   tag: 'latest'
   pullPolicy: Always
 
 # Application configuration for development
 app:
-  name: archie-core-shopify-layer
+  name: shopify-integration-service
   port: 8080
   environment: 'development'
 
