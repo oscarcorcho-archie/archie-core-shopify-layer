@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"archie-core-shopify-layer/internal/domain"
@@ -122,11 +123,49 @@ func (s *ShopifyService) GetConfig(ctx context.Context, tenantID string) (*domai
 }
 
 // GenerateAuthURL generates the OAuth authorization URL
-func (s *ShopifyService) GenerateAuthURL(ctx context.Context, shop string, scopes []string, state string) (string, error) {
-	// Get client for tenant
-	client, err := s.GetClientForTenant(ctx, "")
-	if err != nil {
-		return "", fmt.Errorf("failed to get client: %w", err)
+// This method supports:
+// 1. Provided credentials (apiKey/apiSecret parameters) - highest priority
+// 2. Project-specific config from database
+// 3. Global environment variables (SHOPIFY_API_KEY/SHOPIFY_API_SECRET) - fallback
+func (s *ShopifyService) GenerateAuthURL(ctx context.Context, shop string, scopes []string, state string, apiKey, apiSecret *string) (string, error) {
+	var client ports.ShopifyClient
+	var err error
+
+	// Priority 1: Use provided credentials if available (from archie-core-engine config)
+	if apiKey != nil && apiSecret != nil && *apiKey != "" && *apiSecret != "" {
+		s.logger.Info().
+			Msg("Using provided API credentials for OAuth URL generation")
+		client, err = s.clientPool.GetClient(ctx, "provided-oauth", *apiKey, *apiSecret)
+		if err != nil {
+			return "", fmt.Errorf("failed to create client with provided credentials: %w", err)
+		}
+	} else {
+		// Priority 2: Try to get project-specific client from database
+		client, err = s.GetClientForTenant(ctx, "")
+		if err != nil {
+			// Priority 3: Fall back to global environment variables
+			s.logger.Info().
+				Msg("No project-specific Shopify config found, falling back to global environment variables")
+
+			globalAPIKey := os.Getenv("SHOPIFY_API_KEY")
+			globalAPISecret := os.Getenv("SHOPIFY_API_SECRET")
+
+			if globalAPIKey == "" || globalAPISecret == "" {
+				return "", fmt.Errorf("shopify not configured: no project config, no provided credentials, and global SHOPIFY_API_KEY/SHOPIFY_API_SECRET not set")
+			}
+
+			// Create a temporary client with global credentials for OAuth URL generation
+			client, err = s.clientPool.GetClient(ctx, "global-oauth", globalAPIKey, globalAPISecret)
+			if err != nil {
+				return "", fmt.Errorf("failed to create client with global credentials: %w", err)
+			}
+
+			s.logger.Info().
+				Msg("Using global Shopify API credentials for OAuth URL generation")
+		} else {
+			s.logger.Info().
+				Msg("Using project-specific Shopify config for OAuth URL generation")
+		}
 	}
 
 	// Log requested scopes
@@ -155,11 +194,49 @@ func (s *ShopifyService) GenerateAuthURL(ctx context.Context, shop string, scope
 }
 
 // ExchangeToken exchanges the authorization code for an access token
-func (s *ShopifyService) ExchangeToken(ctx context.Context, shop string, code string) (*domain.Shop, error) {
-	// Get client for tenant
-	client, err := s.GetClientForTenant(ctx, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
+// This method supports:
+// 1. Provided credentials (apiKey/apiSecret parameters) - highest priority
+// 2. Project-specific config from database
+// 3. Global environment variables (SHOPIFY_API_KEY/SHOPIFY_API_SECRET) - fallback
+func (s *ShopifyService) ExchangeToken(ctx context.Context, shop string, code string, apiKey, apiSecret *string) (*domain.Shop, error) {
+	var client ports.ShopifyClient
+	var err error
+
+	// Priority 1: Use provided credentials if available (from archie-core-engine config)
+	if apiKey != nil && apiSecret != nil && *apiKey != "" && *apiSecret != "" {
+		s.logger.Info().
+			Msg("Using provided API credentials for token exchange")
+		client, err = s.clientPool.GetClient(ctx, "provided-oauth", *apiKey, *apiSecret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create client with provided credentials: %w", err)
+		}
+	} else {
+		// Priority 2: Try to get project-specific client from database
+		client, err = s.GetClientForTenant(ctx, "")
+		if err != nil {
+			// Priority 3: Fall back to global environment variables
+			s.logger.Info().
+				Msg("No project-specific Shopify config found for token exchange, falling back to global environment variables")
+
+			globalAPIKey := os.Getenv("SHOPIFY_API_KEY")
+			globalAPISecret := os.Getenv("SHOPIFY_API_SECRET")
+
+			if globalAPIKey == "" || globalAPISecret == "" {
+				return nil, fmt.Errorf("shopify not configured: no project config, no provided credentials, and global SHOPIFY_API_KEY/SHOPIFY_API_SECRET not set")
+			}
+
+			// Create a temporary client with global credentials for token exchange
+			client, err = s.clientPool.GetClient(ctx, "global-oauth", globalAPIKey, globalAPISecret)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create client with global credentials: %w", err)
+			}
+
+			s.logger.Info().
+				Msg("Using global Shopify API credentials for token exchange")
+		} else {
+			s.logger.Info().
+				Msg("Using project-specific Shopify config for token exchange")
+		}
 	}
 
 	// Exchange code for access token

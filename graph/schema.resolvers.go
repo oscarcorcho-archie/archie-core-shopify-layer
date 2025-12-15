@@ -94,7 +94,13 @@ func (r *mutationResolver) ShopifyInstallApp(ctx context.Context, input model.In
 	}
 
 	// Generate auth URL with state
-	authURL, err := r.shopifyService.GenerateAuthURL(ctx, input.Shop, input.Scopes, state)
+	// Pass API credentials if provided in input (from archie-core-engine config)
+	var apiKey, apiSecret *string
+	if input.APIKey != nil && input.APISecret != nil {
+		apiKey = input.APIKey
+		apiSecret = input.APISecret
+	}
+	authURL, err := r.shopifyService.GenerateAuthURL(ctx, input.Shop, input.Scopes, state, apiKey, apiSecret)
 	if err != nil {
 		return nil, err
 	}
