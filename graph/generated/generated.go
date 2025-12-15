@@ -1141,6 +1141,8 @@ input InstallAppInput {
   shop: String!
   scopes: [String!]!
   returnUrl: String
+  apiKey: String  # Optional: if provided, use these credentials for OAuth
+  apiSecret: String  # Optional: if provided, use these credentials for OAuth
 }
 
 # Payload returned after generating auth URL

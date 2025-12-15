@@ -68,6 +68,8 @@ type InstallAppInput struct {
 	Shop      string   `json:"shop"`
 	Scopes    []string `json:"scopes"`
 	ReturnURL *string  `json:"returnUrl,omitempty"`
+	APIKey    *string  `json:"apiKey,omitempty"`    // Optional: if provided, use these credentials for OAuth
+	APISecret *string  `json:"apiSecret,omitempty"` // Optional: if provided, use these credentials for OAuth
 }
 
 type InstallAppPayload struct {

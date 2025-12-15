@@ -112,7 +112,8 @@ func (r *mutationResolver) ShopifyInstallApp(ctx context.Context, input model.In
 
 // ShopifyExchangeToken is the resolver for the shopify_exchangeToken field.
 func (r *mutationResolver) ShopifyExchangeToken(ctx context.Context, input model.ExchangeTokenInput) (*model.ExchangeTokenPayload, error) {
-	shop, err := r.shopifyService.ExchangeToken(ctx, input.Shop, input.Code)
+	// ExchangeToken doesn't receive apiKey/apiSecret from input - it uses config from database or global env vars
+	shop, err := r.shopifyService.ExchangeToken(ctx, input.Shop, input.Code, nil, nil)
 	if err != nil {
 		return nil, err
 	}
