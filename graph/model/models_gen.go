@@ -65,11 +65,12 @@ type ExchangeTokenPayload struct {
 }
 
 type InstallAppInput struct {
-	Shop      string   `json:"shop"`
-	Scopes    []string `json:"scopes"`
-	ReturnURL *string  `json:"returnUrl,omitempty"`
-	APIKey    *string  `json:"apiKey,omitempty"`    // Optional: if provided, use these credentials for OAuth
-	APISecret *string  `json:"apiSecret,omitempty"` // Optional: if provided, use these credentials for OAuth
+	Shop        string   `json:"shop"`
+	Scopes      []string `json:"scopes"`
+	ReturnURL   *string  `json:"returnUrl,omitempty"`   // URL to redirect to after OAuth completes (in archie-app)
+	RedirectURI *string  `json:"redirectUri,omitempty"` // OAuth redirect URI for Shopify (should point to archie-app callback)
+	APIKey      *string  `json:"apiKey,omitempty"`      // Optional: if provided, use these credentials for OAuth
+	APISecret   *string  `json:"apiSecret,omitempty"`   // Optional: if provided, use these credentials for OAuth
 }
 
 type InstallAppPayload struct {

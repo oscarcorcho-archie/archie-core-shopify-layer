@@ -127,7 +127,8 @@ func (s *ShopifyService) GetConfig(ctx context.Context, tenantID string) (*domai
 // 1. Provided credentials (apiKey/apiSecret parameters) - highest priority
 // 2. Project-specific config from database
 // 3. Global environment variables (SHOPIFY_API_KEY/SHOPIFY_API_SECRET) - fallback
-func (s *ShopifyService) GenerateAuthURL(ctx context.Context, shop string, scopes []string, state string, apiKey, apiSecret *string) (string, error) {
+// redirectUri: The OAuth redirect URI (should point to archie-app callback endpoint)
+func (s *ShopifyService) GenerateAuthURL(ctx context.Context, shop string, scopes []string, state string, redirectURI string, apiKey, apiSecret *string) (string, error) {
 	var client ports.ShopifyClient
 	var err error
 
@@ -172,12 +173,18 @@ func (s *ShopifyService) GenerateAuthURL(ctx context.Context, shop string, scope
 	s.logger.Info().
 		Str("shop", shop).
 		Strs("requested_scopes", scopes).
+		Str("redirect_uri", redirectURI).
 		Msg("Generating OAuth URL with scopes")
 
-	// Construct redirect URI from webhookBaseURL (which is APP_URL)
-	// Remove /webhooks/shopify suffix if present
-	appURL := strings.TrimSuffix(s.webhookBaseURL, "/webhooks/shopify")
-	redirectURI := appURL + "/auth/callback"
+	// Use provided redirectURI (should point to archie-app callback endpoint)
+	// Fallback to APP_URL if not provided (for backward compatibility)
+	if redirectURI == "" {
+		appURL := strings.TrimSuffix(s.webhookBaseURL, "/webhooks/shopify")
+		redirectURI = appURL + "/auth/callback"
+		s.logger.Warn().
+			Str("fallback_redirect_uri", redirectURI).
+			Msg("No redirectURI provided, using fallback from APP_URL")
+	}
 
 	authURL, err := client.GenerateAuthURL(shop, scopes, redirectURI, state)
 	if err != nil {

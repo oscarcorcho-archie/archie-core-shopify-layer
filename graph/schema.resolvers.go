@@ -100,7 +100,14 @@ func (r *mutationResolver) ShopifyInstallApp(ctx context.Context, input model.In
 		apiKey = input.APIKey
 		apiSecret = input.APISecret
 	}
-	authURL, err := r.shopifyService.GenerateAuthURL(ctx, input.Shop, input.Scopes, state, apiKey, apiSecret)
+	
+	// Use redirectUri from input if provided, otherwise it will fallback to APP_URL in GenerateAuthURL
+	redirectURI := ""
+	if input.RedirectURI != nil {
+		redirectURI = *input.RedirectURI
+	}
+	
+	authURL, err := r.shopifyService.GenerateAuthURL(ctx, input.Shop, input.Scopes, state, redirectURI, apiKey, apiSecret)
 	if err != nil {
 		return nil, err
 	}

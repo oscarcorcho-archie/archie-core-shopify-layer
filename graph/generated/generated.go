@@ -1140,7 +1140,8 @@ type ShopifyCredentials {
 input InstallAppInput {
   shop: String!
   scopes: [String!]!
-  returnUrl: String
+  returnUrl: String  # URL to redirect to after OAuth completes (in archie-app)
+  redirectUri: String  # OAuth redirect URI for Shopify (should point to archie-app callback)
   apiKey: String  # Optional: if provided, use these credentials for OAuth
   apiSecret: String  # Optional: if provided, use these credentials for OAuth
 }
