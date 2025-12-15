@@ -366,7 +366,12 @@ func oauthCallbackHandler(
 
 		// Exchange token
 		// OAuth callback doesn't have apiKey/apiSecret - ExchangeToken will use config from database or global env vars
-		shopDomain, err := shopifyService.ExchangeToken(ctx, shop, code, nil, nil)
+		// Get redirectURI from session for token exchange
+		redirectURI := ""
+		if session != nil && session.RedirectURI != "" {
+			redirectURI = session.RedirectURI
+		}
+		shopDomain, err := shopifyService.ExchangeToken(ctx, shop, code, redirectURI, nil, nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to exchange token")
 			http.Error(w, "Failed to complete installation", http.StatusInternalServerError)

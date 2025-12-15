@@ -90,6 +90,7 @@ type InstallAppPayload {
 input ExchangeTokenInput {
   shop: String!
   code: String!
+  state: String  # Optional: used to retrieve redirect_uri from session
 }
 
 # Payload returned after token exchange

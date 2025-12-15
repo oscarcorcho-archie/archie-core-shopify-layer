@@ -93,41 +93,6 @@ func (r *mutationResolver) ShopifyInstallApp(ctx context.Context, input model.In
 		returnURL = &defaultReturnURL
 	}
 
-	// Create session with project ID, environment, and return URL
-	session := &domain.Session{
-		Shop:        input.Shop,
-		State:       state,
-		Scopes:      input.Scopes,
-		ProjectID:   projectID,
-		Environment: environment,
-		ReturnURL:   *returnURL,
-		ExpiresAt:   time.Now().Add(10 * time.Minute),
-	}
-
-	if err := r.sessionRepo.CreateSession(ctx, session); err != nil {
-		return nil, fmt.Errorf("failed to create session: %w", err)
-	}
-
-	// Generate auth URL with state
-	// Pass API credentials if provided in input (from archie-core-engine config)
-	var apiKey, apiSecret *string
-	if input.APIKey != nil && input.APISecret != nil {
-		apiKey = input.APIKey
-		apiSecret = input.APISecret
-	}
-
-	// Debug: Log the entire input to see what we received
-	fmt.Printf("🔍 [ShopifyInstallApp] Received input - Shop: %s\n", input.Shop)
-	fmt.Printf("🔍 [ShopifyInstallApp] RedirectURI pointer: %v\n", input.RedirectURI)
-	if input.RedirectURI != nil {
-		fmt.Printf("🔍 [ShopifyInstallApp] RedirectURI value: '%s'\n", *input.RedirectURI)
-	} else {
-		fmt.Printf("🔍 [ShopifyInstallApp] RedirectURI is nil - checking if field exists in struct\n")
-		// Try to access via reflection to see if field exists
-		fmt.Printf("🔍 [ShopifyInstallApp] Input struct: Shop=%s, Scopes=%v, ReturnURL=%v, RedirectURI=%v, APIKey=%v, APISecret=%v\n",
-			input.Shop, input.Scopes, input.ReturnURL, input.RedirectURI, input.APIKey, input.APISecret)
-	}
-
 	// Use redirectUri from input if provided, otherwise it will fallback to APP_URL in GenerateAuthURL
 	redirectURI := ""
 	if input.RedirectURI != nil && *input.RedirectURI != "" {
@@ -143,6 +108,30 @@ func (r *mutationResolver) ShopifyInstallApp(ctx context.Context, input model.In
 		fmt.Printf("⚠️ [ShopifyInstallApp] Falling back to APP_URL for redirectURI\n")
 	}
 
+	// Create session with project ID, environment, return URL, and redirect URI
+	session := &domain.Session{
+		Shop:        input.Shop,
+		State:       state,
+		Scopes:      input.Scopes,
+		ProjectID:   projectID,
+		Environment: environment,
+		ReturnURL:   *returnURL,
+		RedirectURI: redirectURI, // Store redirect URI for token exchange
+		ExpiresAt:   time.Now().Add(10 * time.Minute),
+	}
+
+	if err := r.sessionRepo.CreateSession(ctx, session); err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	// Generate auth URL with state
+	// Pass API credentials if provided in input (from archie-core-engine config)
+	var apiKey, apiSecret *string
+	if input.APIKey != nil && input.APISecret != nil {
+		apiKey = input.APIKey
+		apiSecret = input.APISecret
+	}
+
 	authURL, err := r.shopifyService.GenerateAuthURL(ctx, input.Shop, input.Scopes, state, redirectURI, apiKey, apiSecret)
 	if err != nil {
 		return nil, err
@@ -155,8 +144,23 @@ func (r *mutationResolver) ShopifyInstallApp(ctx context.Context, input model.In
 
 // ShopifyExchangeToken is the resolver for the shopify_exchangeToken field.
 func (r *mutationResolver) ShopifyExchangeToken(ctx context.Context, input model.ExchangeTokenInput) (*model.ExchangeTokenPayload, error) {
+	// Retrieve redirectURI from session if state is provided
+	var redirectURI string
+	if input.State != nil && *input.State != "" {
+		session, err := r.sessionRepo.GetSession(ctx, *input.State)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve session: %w", err)
+		}
+		if session != nil && session.RedirectURI != "" {
+			redirectURI = session.RedirectURI
+			fmt.Printf("✅ [ShopifyExchangeToken] Retrieved redirectURI from session: %s\n", redirectURI)
+		} else {
+			fmt.Printf("⚠️ [ShopifyExchangeToken] Session not found or redirectURI not stored for state: %s\n", *input.State)
+		}
+	}
+
 	// ExchangeToken doesn't receive apiKey/apiSecret from input - it uses config from database or global env vars
-	shop, err := r.shopifyService.ExchangeToken(ctx, input.Shop, input.Code, nil, nil)
+	shop, err := r.shopifyService.ExchangeToken(ctx, input.Shop, input.Code, redirectURI, nil, nil)
 	if err != nil {
 		return nil, err
 	}

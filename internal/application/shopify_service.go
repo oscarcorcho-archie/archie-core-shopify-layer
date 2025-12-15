@@ -234,7 +234,8 @@ func (s *ShopifyService) GenerateAuthURL(ctx context.Context, shop string, scope
 // 1. Provided credentials (apiKey/apiSecret parameters) - highest priority
 // 2. Project-specific config from database
 // 3. Global environment variables (SHOPIFY_API_KEY/SHOPIFY_API_SECRET) - fallback
-func (s *ShopifyService) ExchangeToken(ctx context.Context, shop string, code string, apiKey, apiSecret *string) (*domain.Shop, error) {
+// redirectURI: The OAuth redirect URI that was used in the authorization request (required by Shopify)
+func (s *ShopifyService) ExchangeToken(ctx context.Context, shop string, code string, redirectURI string, apiKey, apiSecret *string) (*domain.Shop, error) {
 	var client ports.ShopifyClient
 	var err error
 
@@ -276,9 +277,10 @@ func (s *ShopifyService) ExchangeToken(ctx context.Context, shop string, code st
 	}
 
 	// Exchange code for access token
-	accessToken, err := client.ExchangeToken(ctx, shop, code)
+	// Shopify requires the same redirect_uri that was used in the authorization request
+	accessToken, err := client.ExchangeToken(ctx, shop, code, redirectURI)
 	if err != nil {
-		s.logger.Error().Err(err).Str("shop", shop).Msg("Failed to exchange token")
+		s.logger.Error().Err(err).Str("shop", shop).Str("redirect_uri", redirectURI).Msg("Failed to exchange token")
 		return nil, fmt.Errorf("failed to exchange token: %w", err)
 	}
 

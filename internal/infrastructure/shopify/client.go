@@ -2,7 +2,10 @@ package shopify
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -91,7 +94,49 @@ func (c *client) GenerateAuthURL(shop string, scopes []string, redirectURI strin
 	return authURL, nil
 }
 
-func (c *client) ExchangeToken(ctx context.Context, shop string, code string) (string, error) {
+func (c *client) ExchangeToken(ctx context.Context, shop string, code string, redirectURI string) (string, error) {
+	// Shopify requires the redirect_uri parameter to match the one used in authorization
+	// The go-shopify library's GetAccessToken doesn't expose redirect_uri, so we make a direct HTTP call
+	if redirectURI != "" {
+		// Make direct HTTP call to Shopify's token endpoint with redirect_uri
+		tokenURL := fmt.Sprintf("https://%s/admin/oauth/access_token", shop)
+		
+		values := url.Values{}
+		values.Set("client_id", c.apiKey)
+		values.Set("client_secret", c.apiSecret)
+		values.Set("code", code)
+		values.Set("redirect_uri", redirectURI)
+		
+		req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(values.Encode()))
+		if err != nil {
+			return "", fmt.Errorf("failed to create token request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("failed to exchange token: %w", err)
+		}
+		defer resp.Body.Close()
+		
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return "", fmt.Errorf("failed to exchange token: status %d, body: %s", resp.StatusCode, string(bodyBytes))
+		}
+		
+		var tokenResponse struct {
+			AccessToken string `json:"access_token"`
+			Scope       string `json:"scope"`
+		}
+		
+		if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
+			return "", fmt.Errorf("failed to decode token response: %w", err)
+		}
+		
+		return tokenResponse.AccessToken, nil
+	}
+	
+	// Fallback to go-shopify library if redirectURI not provided (for backward compatibility)
 	token, err := c.app.GetAccessToken(ctx, shop, code)
 	if err != nil {
 		return "", fmt.Errorf("failed to exchange token: %w", err)

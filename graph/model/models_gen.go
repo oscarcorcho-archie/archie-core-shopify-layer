@@ -55,8 +55,9 @@ type Customer struct {
 }
 
 type ExchangeTokenInput struct {
-	Shop string `json:"shop"`
-	Code string `json:"code"`
+	Shop  string  `json:"shop"`
+	Code  string  `json:"code"`
+	State *string `json:"state,omitempty"` // Optional: used to retrieve redirect_uri from session
 }
 
 type ExchangeTokenPayload struct {

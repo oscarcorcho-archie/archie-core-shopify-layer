@@ -10,7 +10,7 @@ import (
 type ShopifyClient interface {
 	// Authentication
 	GenerateAuthURL(shop string, scopes []string, redirectURI string, state string) (string, error)
-	ExchangeToken(ctx context.Context, shop string, code string) (string, error)
+	ExchangeToken(ctx context.Context, shop string, code string, redirectURI string) (string, error)
 
 	// Shop API
 	GetShop(ctx context.Context, shop string, accessToken string) (*shopify.Shop, error)

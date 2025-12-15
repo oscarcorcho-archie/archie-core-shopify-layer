@@ -11,6 +11,7 @@ type Session struct {
 	ProjectID   string    `json:"project_id" bson:"project_id"`
 	Environment string    `json:"environment" bson:"environment"`
 	ReturnURL   string    `json:"return_url" bson:"return_url"`
+	RedirectURI string    `json:"redirect_uri" bson:"redirect_uri"` // OAuth redirect URI used in authorization request
 	ExpiresAt   time.Time `json:"expires_at" bson:"expires_at"`
 	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
 }
