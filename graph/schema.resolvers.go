@@ -19,6 +19,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	goshopify "github.com/bold-commerce/go-shopify/v4"
 )
 
 // ConfigureShopify is the resolver for the configureShopify field.
@@ -243,6 +245,270 @@ func (r *mutationResolver) DeleteIntegration(ctx context.Context, key string) (b
 	if err != nil {
 		return false, err
 	}
+	return true, nil
+}
+
+// ShopifyCreateProduct is the resolver for the shopify_createProduct field.
+func (r *mutationResolver) ShopifyCreateProduct(ctx context.Context, input model.ProductInput) (*model.ProductPayload, error) {
+	var product goshopify.Product
+	if err := json.Unmarshal([]byte(input.Product), &product); err != nil {
+		return nil, fmt.Errorf("failed to parse product JSON: %w", err)
+	}
+
+	created, err := r.shopifyService.CreateProduct(ctx, input.Domain, &product)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, created.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, created.UpdatedAt.String())
+
+	return &model.ProductPayload{
+		Product: &model.Product{
+			ID:          fmt.Sprintf("%d", created.Id),
+			Title:       created.Title,
+			Handle:      &created.Handle,
+			Vendor:      &created.Vendor,
+			ProductType: &created.ProductType,
+			CreatedAt:   scalars.Time(createdAt),
+			UpdatedAt:   scalars.Time(updatedAt),
+		},
+	}, nil
+}
+
+// ShopifyUpdateProduct is the resolver for the shopify_updateProduct field.
+func (r *mutationResolver) ShopifyUpdateProduct(ctx context.Context, input model.ProductInput) (*model.ProductPayload, error) {
+	var product goshopify.Product
+	if err := json.Unmarshal([]byte(input.Product), &product); err != nil {
+		return nil, fmt.Errorf("failed to parse product JSON: %w", err)
+	}
+
+	updated, err := r.shopifyService.UpdateProduct(ctx, input.Domain, &product)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, updated.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, updated.UpdatedAt.String())
+
+	return &model.ProductPayload{
+		Product: &model.Product{
+			ID:          fmt.Sprintf("%d", updated.Id),
+			Title:       updated.Title,
+			Handle:      &updated.Handle,
+			Vendor:      &updated.Vendor,
+			ProductType: &updated.ProductType,
+			CreatedAt:   scalars.Time(createdAt),
+			UpdatedAt:   scalars.Time(updatedAt),
+		},
+	}, nil
+}
+
+// ShopifyDeleteProduct is the resolver for the shopify_deleteProduct field.
+func (r *mutationResolver) ShopifyDeleteProduct(ctx context.Context, input model.DeleteProductInput) (bool, error) {
+	var productID int64
+	if _, err := fmt.Sscanf(input.ProductID, "%d", &productID); err != nil {
+		return false, fmt.Errorf("invalid product ID format: %w", err)
+	}
+
+	err := r.shopifyService.DeleteProduct(ctx, input.Domain, productID)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+// ShopifyCreateOrder is the resolver for the shopify_createOrder field.
+func (r *mutationResolver) ShopifyCreateOrder(ctx context.Context, input model.OrderInput) (*model.OrderPayload, error) {
+	var order goshopify.Order
+	if err := json.Unmarshal([]byte(input.Order), &order); err != nil {
+		return nil, fmt.Errorf("failed to parse order JSON: %w", err)
+	}
+
+	created, err := r.shopifyService.CreateOrder(ctx, input.Domain, &order)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, created.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, created.UpdatedAt.String())
+
+	totalPrice := ""
+	if created.TotalPrice != nil {
+		totalPrice = created.TotalPrice.String()
+	}
+	financialStatus := string(created.FinancialStatus)
+	fulfillmentStatus := string(created.FulfillmentStatus)
+
+	return &model.OrderPayload{
+		Order: &model.Order{
+			ID:                fmt.Sprintf("%d", created.Id),
+			OrderNumber:       int(created.OrderNumber),
+			Email:             &created.Email,
+			TotalPrice:        totalPrice,
+			FinancialStatus:   &financialStatus,
+			FulfillmentStatus: &fulfillmentStatus,
+			CreatedAt:         scalars.Time(createdAt),
+			UpdatedAt:         scalars.Time(updatedAt),
+		},
+	}, nil
+}
+
+// ShopifyUpdateOrder is the resolver for the shopify_updateOrder field.
+func (r *mutationResolver) ShopifyUpdateOrder(ctx context.Context, input model.OrderInput) (*model.OrderPayload, error) {
+	var order goshopify.Order
+	if err := json.Unmarshal([]byte(input.Order), &order); err != nil {
+		return nil, fmt.Errorf("failed to parse order JSON: %w", err)
+	}
+
+	updated, err := r.shopifyService.UpdateOrder(ctx, input.Domain, &order)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, updated.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, updated.UpdatedAt.String())
+
+	totalPrice := ""
+	if updated.TotalPrice != nil {
+		totalPrice = updated.TotalPrice.String()
+	}
+	financialStatus := string(updated.FinancialStatus)
+	fulfillmentStatus := string(updated.FulfillmentStatus)
+
+	return &model.OrderPayload{
+		Order: &model.Order{
+			ID:                fmt.Sprintf("%d", updated.Id),
+			OrderNumber:       int(updated.OrderNumber),
+			Email:             &updated.Email,
+			TotalPrice:        totalPrice,
+			FinancialStatus:   &financialStatus,
+			FulfillmentStatus: &fulfillmentStatus,
+			CreatedAt:         scalars.Time(createdAt),
+			UpdatedAt:         scalars.Time(updatedAt),
+		},
+	}, nil
+}
+
+// ShopifyCancelOrder is the resolver for the shopify_cancelOrder field.
+func (r *mutationResolver) ShopifyCancelOrder(ctx context.Context, input model.CancelOrderInput) (*model.OrderPayload, error) {
+	var orderID int64
+	if _, err := fmt.Sscanf(input.OrderID, "%d", &orderID); err != nil {
+		return nil, fmt.Errorf("invalid order ID format: %w", err)
+	}
+
+	canceled, err := r.shopifyService.CancelOrder(ctx, input.Domain, orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, canceled.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, canceled.UpdatedAt.String())
+
+	totalPrice := ""
+	if canceled.TotalPrice != nil {
+		totalPrice = canceled.TotalPrice.String()
+	}
+	financialStatus := string(canceled.FinancialStatus)
+	fulfillmentStatus := string(canceled.FulfillmentStatus)
+
+	return &model.OrderPayload{
+		Order: &model.Order{
+			ID:                fmt.Sprintf("%d", canceled.Id),
+			OrderNumber:       int(canceled.OrderNumber),
+			Email:             &canceled.Email,
+			TotalPrice:        totalPrice,
+			FinancialStatus:   &financialStatus,
+			FulfillmentStatus: &fulfillmentStatus,
+			CreatedAt:         scalars.Time(createdAt),
+			UpdatedAt:         scalars.Time(updatedAt),
+		},
+	}, nil
+}
+
+// ShopifyCreateCustomer is the resolver for the shopify_createCustomer field.
+func (r *mutationResolver) ShopifyCreateCustomer(ctx context.Context, input model.CustomerInput) (*model.CustomerPayload, error) {
+	var customer goshopify.Customer
+	if err := json.Unmarshal([]byte(input.Customer), &customer); err != nil {
+		return nil, fmt.Errorf("failed to parse customer JSON: %w", err)
+	}
+
+	created, err := r.shopifyService.CreateCustomer(ctx, input.Domain, &customer)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, created.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, created.UpdatedAt.String())
+
+	ordersCount := int(created.OrdersCount)
+	totalSpent := ""
+	if created.TotalSpent != nil {
+		totalSpent = created.TotalSpent.String()
+	}
+
+	return &model.CustomerPayload{
+		Customer: &model.Customer{
+			ID:          fmt.Sprintf("%d", created.Id),
+			Email:       &created.Email,
+			FirstName:   &created.FirstName,
+			LastName:    &created.LastName,
+			OrdersCount: &ordersCount,
+			TotalSpent:  &totalSpent,
+			CreatedAt:   scalars.Time(createdAt),
+			UpdatedAt:   scalars.Time(updatedAt),
+		},
+	}, nil
+}
+
+// ShopifyUpdateCustomer is the resolver for the shopify_updateCustomer field.
+func (r *mutationResolver) ShopifyUpdateCustomer(ctx context.Context, input model.CustomerInput) (*model.CustomerPayload, error) {
+	var customer goshopify.Customer
+	if err := json.Unmarshal([]byte(input.Customer), &customer); err != nil {
+		return nil, fmt.Errorf("failed to parse customer JSON: %w", err)
+	}
+
+	updated, err := r.shopifyService.UpdateCustomer(ctx, input.Domain, &customer)
+	if err != nil {
+		return nil, err
+	}
+
+	createdAt, _ := time.Parse(time.RFC3339, updated.CreatedAt.String())
+	updatedAt, _ := time.Parse(time.RFC3339, updated.UpdatedAt.String())
+
+	ordersCount := int(updated.OrdersCount)
+	totalSpent := ""
+	if updated.TotalSpent != nil {
+		totalSpent = updated.TotalSpent.String()
+	}
+
+	return &model.CustomerPayload{
+		Customer: &model.Customer{
+			ID:          fmt.Sprintf("%d", updated.Id),
+			Email:       &updated.Email,
+			FirstName:   &updated.FirstName,
+			LastName:    &updated.LastName,
+			OrdersCount: &ordersCount,
+			TotalSpent:  &totalSpent,
+			CreatedAt:   scalars.Time(createdAt),
+			UpdatedAt:   scalars.Time(updatedAt),
+		},
+	}, nil
+}
+
+// ShopifyDeleteCustomer is the resolver for the shopify_deleteCustomer field.
+func (r *mutationResolver) ShopifyDeleteCustomer(ctx context.Context, input model.DeleteCustomerInput) (bool, error) {
+	var customerID int64
+	if _, err := fmt.Sscanf(input.CustomerID, "%d", &customerID); err != nil {
+		return false, fmt.Errorf("invalid customer ID format: %w", err)
+	}
+
+	err := r.shopifyService.DeleteCustomer(ctx, input.Domain, customerID)
+	if err != nil {
+		return false, err
+	}
+
 	return true, nil
 }
 

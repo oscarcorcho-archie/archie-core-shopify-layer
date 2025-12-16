@@ -672,6 +672,195 @@ func (s *ShopifyService) GetInventoryLevels(ctx context.Context, domain string) 
 	return levels, nil
 }
 
+// CreateProduct creates a new product
+func (s *ShopifyService) CreateProduct(ctx context.Context, domain string, product *goshopify.Product) (*goshopify.Product, error) {
+	accessToken, err := s.getDecryptedAccessToken(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.GetClientForTenant(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	created, err := client.CreateProduct(ctx, domain, accessToken, product)
+	if err != nil {
+		s.logger.Error().Err(err).Str("domain", domain).Msg("Failed to create product")
+		return nil, fmt.Errorf("failed to create product: %w", err)
+	}
+
+	return created, nil
+}
+
+// UpdateProduct updates an existing product
+func (s *ShopifyService) UpdateProduct(ctx context.Context, domain string, product *goshopify.Product) (*goshopify.Product, error) {
+	accessToken, err := s.getDecryptedAccessToken(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.GetClientForTenant(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	updated, err := client.UpdateProduct(ctx, domain, accessToken, product)
+	if err != nil {
+		s.logger.Error().Err(err).Str("domain", domain).Uint64("productID", product.Id).Msg("Failed to update product")
+		return nil, fmt.Errorf("failed to update product: %w", err)
+	}
+
+	return updated, nil
+}
+
+// DeleteProduct deletes a product
+func (s *ShopifyService) DeleteProduct(ctx context.Context, domain string, productID int64) error {
+	accessToken, err := s.getDecryptedAccessToken(ctx, domain)
+	if err != nil {
+		return err
+	}
+
+	client, err := s.GetClientForTenant(ctx, "")
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	err = client.DeleteProduct(ctx, domain, accessToken, productID)
+	if err != nil {
+		s.logger.Error().Err(err).Str("domain", domain).Int64("productID", productID).Msg("Failed to delete product")
+		return fmt.Errorf("failed to delete product: %w", err)
+	}
+
+	return nil
+}
+
+// CreateOrder creates a new order
+func (s *ShopifyService) CreateOrder(ctx context.Context, domain string, order *goshopify.Order) (*goshopify.Order, error) {
+	accessToken, err := s.getDecryptedAccessToken(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.GetClientForTenant(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	created, err := client.CreateOrder(ctx, domain, accessToken, order)
+	if err != nil {
+		s.logger.Error().Err(err).Str("domain", domain).Msg("Failed to create order")
+		return nil, fmt.Errorf("failed to create order: %w", err)
+	}
+
+	return created, nil
+}
+
+// UpdateOrder updates an existing order
+func (s *ShopifyService) UpdateOrder(ctx context.Context, domain string, order *goshopify.Order) (*goshopify.Order, error) {
+	accessToken, err := s.getDecryptedAccessToken(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.GetClientForTenant(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	updated, err := client.UpdateOrder(ctx, domain, accessToken, order)
+	if err != nil {
+		s.logger.Error().Err(err).Str("domain", domain).Uint64("orderID", order.Id).Msg("Failed to update order")
+		return nil, fmt.Errorf("failed to update order: %w", err)
+	}
+
+	return updated, nil
+}
+
+// CancelOrder cancels an order
+func (s *ShopifyService) CancelOrder(ctx context.Context, domain string, orderID int64) (*goshopify.Order, error) {
+	accessToken, err := s.getDecryptedAccessToken(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.GetClientForTenant(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	canceled, err := client.CancelOrder(ctx, domain, accessToken, orderID)
+	if err != nil {
+		s.logger.Error().Err(err).Str("domain", domain).Int64("orderID", orderID).Msg("Failed to cancel order")
+		return nil, fmt.Errorf("failed to cancel order: %w", err)
+	}
+
+	return canceled, nil
+}
+
+// CreateCustomer creates a new customer
+func (s *ShopifyService) CreateCustomer(ctx context.Context, domain string, customer *goshopify.Customer) (*goshopify.Customer, error) {
+	accessToken, err := s.getDecryptedAccessToken(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.GetClientForTenant(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	created, err := client.CreateCustomer(ctx, domain, accessToken, customer)
+	if err != nil {
+		s.logger.Error().Err(err).Str("domain", domain).Msg("Failed to create customer")
+		return nil, fmt.Errorf("failed to create customer: %w", err)
+	}
+
+	return created, nil
+}
+
+// UpdateCustomer updates an existing customer
+func (s *ShopifyService) UpdateCustomer(ctx context.Context, domain string, customer *goshopify.Customer) (*goshopify.Customer, error) {
+	accessToken, err := s.getDecryptedAccessToken(ctx, domain)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := s.GetClientForTenant(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	updated, err := client.UpdateCustomer(ctx, domain, accessToken, customer)
+	if err != nil {
+		s.logger.Error().Err(err).Str("domain", domain).Uint64("customerID", customer.Id).Msg("Failed to update customer")
+		return nil, fmt.Errorf("failed to update customer: %w", err)
+	}
+
+	return updated, nil
+}
+
+// DeleteCustomer deletes a customer
+func (s *ShopifyService) DeleteCustomer(ctx context.Context, domain string, customerID int64) error {
+	accessToken, err := s.getDecryptedAccessToken(ctx, domain)
+	if err != nil {
+		return err
+	}
+
+	client, err := s.GetClientForTenant(ctx, "")
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	err = client.DeleteCustomer(ctx, domain, accessToken, customerID)
+	if err != nil {
+		s.logger.Error().Err(err).Str("domain", domain).Int64("customerID", customerID).Msg("Failed to delete customer")
+		return fmt.Errorf("failed to delete customer: %w", err)
+	}
+
+	return nil
+}
+
 // ProcessWebhook processes a Shopify webhook event
 func (s *ShopifyService) ProcessWebhook(ctx context.Context, topic string, shop string, payload []byte, verified bool) error {
 	// Create webhook event

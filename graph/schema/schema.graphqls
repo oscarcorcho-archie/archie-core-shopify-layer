@@ -163,6 +163,57 @@ type ConfigureCredentialsPayload {
   credentials: ShopifyCredentials!
 }
 
+# Input for creating/updating a product (JSON string representation)
+input ProductInput {
+  domain: String!
+  product: String!  # JSON string of Shopify Product
+}
+
+# Payload returned after product mutation
+type ProductPayload {
+  product: Product!
+}
+
+# Input for deleting a product
+input DeleteProductInput {
+  domain: String!
+  productId: ID!
+}
+
+# Input for creating/updating an order (JSON string representation)
+input OrderInput {
+  domain: String!
+  order: String!  # JSON string of Shopify Order
+}
+
+# Payload returned after order mutation
+type OrderPayload {
+  order: Order!
+}
+
+# Input for canceling an order
+input CancelOrderInput {
+  domain: String!
+  orderId: ID!
+}
+
+# Input for creating/updating a customer (JSON string representation)
+input CustomerInput {
+  domain: String!
+  customer: String!  # JSON string of Shopify Customer
+}
+
+# Payload returned after customer mutation
+type CustomerPayload {
+  customer: Customer!
+}
+
+# Input for deleting a customer
+input DeleteCustomerInput {
+  domain: String!
+  customerId: ID!
+}
+
 type Query {
   # Shop operations
   shopify_shop(domain: String!): Shop
@@ -209,6 +260,21 @@ type Mutation {
   # Integration operations
   createIntegration(input: CreateIntegrationInput!): CreateIntegrationPayload!
   deleteIntegration(key: String!): Boolean!
+  
+  # Product mutations
+  shopify_createProduct(input: ProductInput!): ProductPayload!
+  shopify_updateProduct(input: ProductInput!): ProductPayload!
+  shopify_deleteProduct(input: DeleteProductInput!): Boolean!
+  
+  # Order mutations
+  shopify_createOrder(input: OrderInput!): OrderPayload!
+  shopify_updateOrder(input: OrderInput!): OrderPayload!
+  shopify_cancelOrder(input: CancelOrderInput!): OrderPayload!
+  
+  # Customer mutations
+  shopify_createCustomer(input: CustomerInput!): CustomerPayload!
+  shopify_updateCustomer(input: CustomerInput!): CustomerPayload!
+  shopify_deleteCustomer(input: DeleteCustomerInput!): Boolean!
 }
 
 # Webhook event filter for subscriptions
