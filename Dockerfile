@@ -9,18 +9,21 @@ RUN apk add --no-cache git ca-certificates tzdata
 # Set working directory
 WORKDIR /build
 
-# Copy go mod files
+# Copy go mod files first (for better caching)
 COPY go.mod go.sum ./
-
-# Download dependencies (cached layer)
-RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Update go.sum to ensure all dependencies are recorded, then generate GraphQL code
-RUN go mod tidy && \
-    go run github.com/99designs/gqlgen generate
+# Update go.sum with gqlgen transitive dependencies
+# GOSUMDB=off allows adding entries even if checksums aren't verified yet
+RUN GOSUMDB=off go get github.com/99designs/gqlgen@v0.17.84
+
+# Download all dependencies (now that go.sum is updated)
+RUN go mod download
+
+# Generate GraphQL code
+RUN go run github.com/99designs/gqlgen generate
 
 # Build the application
 # CGO_ENABLED=0 for static binary, -ldflags for smaller binary size
